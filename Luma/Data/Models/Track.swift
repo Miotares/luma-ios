@@ -26,6 +26,10 @@ final class Track {
     var isLiked: Bool
     var genre: String?
     var year: Int?
+    /// Watched-folder (macOS) change detection — referenced files stay in place, so we
+    /// re-read metadata only when the file's modification date or size changes.
+    var fileModifiedDate: Date?
+    var fileSize: Int64?
 
     @Relationship(deleteRule: .nullify, inverse: \Album.tracks)
     var album: Album?
@@ -51,7 +55,9 @@ final class Track {
         filePath: String,
         addedDate: Date = Date(),
         genre: String? = nil,
-        year: Int? = nil
+        year: Int? = nil,
+        fileModifiedDate: Date? = nil,
+        fileSize: Int64? = nil
     ) {
         self.id = id
         self.title = title
@@ -69,6 +75,8 @@ final class Track {
         self.isLiked = false
         self.genre = genre
         self.year = year
+        self.fileModifiedDate = fileModifiedDate
+        self.fileSize = fileSize
     }
 
     /// Resolves the playable URL. Prefers the local imported copy (no
@@ -78,25 +86,30 @@ final class Track {
         if let localFileName {
             return MediaStorage.url(for: localFileName)
         }
-        guard let fileBookmarkData else {
-            throw MediaStorage.StorageError.missingFile
+        if let fileBookmarkData {
+            var isStale = false
+            #if os(macOS)
+            return try URL(
+                resolvingBookmarkData: fileBookmarkData,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+            #else
+            return try URL(
+                resolvingBookmarkData: fileBookmarkData,
+                options: [],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            )
+            #endif
         }
-        var isStale = false
-        #if os(macOS)
-        return try URL(
-            resolvingBookmarkData: fileBookmarkData,
-            options: .withSecurityScope,
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        )
-        #else
-        return try URL(
-            resolvingBookmarkData: fileBookmarkData,
-            options: [],
-            relativeTo: nil,
-            bookmarkDataIsStale: &isStale
-        )
-        #endif
+        // Watched-folder reference model (macOS): the file lives at its original path and
+        // is never copied. Play it directly from there.
+        if !filePath.isEmpty {
+            return URL(fileURLWithPath: filePath)
+        }
+        throw MediaStorage.StorageError.missingFile
     }
 
     /// True when the track has a local copy (no external source needed).

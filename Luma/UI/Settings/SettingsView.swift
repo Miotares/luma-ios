@@ -1,5 +1,8 @@
 import SwiftUI
 import SwiftData
+#if os(macOS)
+import AppKit
+#endif
 
 struct SettingsView: View {
     @Environment(AppContainer.self) private var app
@@ -23,16 +26,23 @@ struct SettingsView: View {
             settingsHeader
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    #if os(macOS)
+                    sectionLabel("Musikordner")
+                    folderBlock
+                    #else
                     sectionLabel("Import")
                     importBlock
+                    #endif
                     sectionLabel("Allgemein")
                     startBlock
                     sectionLabel("Wiedergabe")
                     crossfadeBlock
                     sectionLabel("Mediathek")
                     statsBlock
+                    #if os(iOS)
                     sectionLabel("Speicher")
                     storageBlock
+                    #endif
                     sectionLabel("Tools")
                     toolsBlock
                     sectionLabel("App")
@@ -49,7 +59,7 @@ struct SettingsView: View {
             }
             .lumaScrollClearance(playerActive: app.player.state.isActive)
         }
-        .toolbarVisibility(.hidden, for: .navigationBar)
+        .lumaHideNavBar()
         .background(Color.lumaBackground.ignoresSafeArea())
         .navigationDestination(for: StatisticsRoute.self) { _ in StatisticsView() }
         .sheet(isPresented: $showingImport) { ImportView() }
@@ -272,3 +282,90 @@ struct SettingsView: View {
         storageBytes = await Task.detached { MediaStorage.totalBytes }.value
     }
 }
+
+#if os(macOS)
+extension SettingsView {
+    /// Watched music folders (foobar model): referenced in place, scanned on launch.
+    var folderBlock: some View {
+        VStack(spacing: 0) {
+            ForEach(app.libraryFolders.folders, id: \.self) { url in
+                HStack(spacing: 0) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.lumaAccent)
+                        .frame(width: 28)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(url.lastPathComponent).foregroundStyle(.white)
+                        Text(url.path)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.4))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    Spacer(minLength: 12)
+                    Button {
+                        app.libraryFolders.remove(url)
+                        app.rescan()
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.white.opacity(0.3))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 20)
+                .frame(minHeight: 58)
+                LumaSeparator(leadingPad: 20)
+            }
+            Button { addFolders() } label: {
+                HStack {
+                    Image(systemName: "plus")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.lumaAccent)
+                        .frame(width: 28)
+                    Text("Ordner hinzufügen").foregroundStyle(.white)
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .frame(minHeight: 52)
+            }
+            .buttonStyle(LumaRowStyle())
+            LumaSeparator(leadingPad: 20)
+            Button { app.rescan() } label: {
+                HStack {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.lumaAccent)
+                        .frame(width: 28)
+                    Text(app.folderScanner.isScanning ? "Scanne…" : "Jetzt neu scannen")
+                        .foregroundStyle(.white)
+                    Spacer()
+                    if app.folderScanner.isScanning {
+                        Text("\(Int(app.folderScanner.progress * 100)) %")
+                            .foregroundStyle(.white.opacity(0.4))
+                            .monospacedDigit()
+                    }
+                }
+                .padding(.horizontal, 20)
+                .frame(minHeight: 52)
+            }
+            .buttonStyle(LumaRowStyle())
+            .disabled(app.folderScanner.isScanning)
+        }
+        .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
+    }
+
+    func addFolders() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Auswählen"
+        panel.message = "Musikordner auswählen"
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls { app.libraryFolders.add(url) }
+        app.rescan()
+    }
+}
+#endif

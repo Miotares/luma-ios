@@ -36,7 +36,7 @@ struct AlbumMetadataEditorView: View {
             .background(Color.lumaBackground.ignoresSafeArea())
             .navigationTitle("Albuminformationen")
             #if os(iOS) || os(visionOS)
-            .navigationBarTitleDisplayMode(.inline)
+            .lumaInlineNavTitle()
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -49,8 +49,8 @@ struct AlbumMetadataEditorView: View {
                         .foregroundStyle(Color.lumaAccent)
                 }
             }
-            .toolbarBackground(Color.lumaBackground, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .lumaDarkNavBackground()
+            .lumaDarkNavScheme()
         }
         .onAppear(perform: load)
     }

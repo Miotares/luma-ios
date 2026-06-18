@@ -71,7 +71,7 @@ struct ImportView: View {
                 Spacer()
             }
             .navigationTitle("Import")
-            .navigationBarTitleDisplayMode(.inline)
+            .lumaInlineNavTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Fertig") { dismiss() }

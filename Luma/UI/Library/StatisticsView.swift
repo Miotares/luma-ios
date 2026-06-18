@@ -64,9 +64,9 @@ struct StatisticsView: View {
             }
             .lumaScrollClearance(playerActive: app.player.state.isActive)
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .navigationBarBackButtonHidden(true)
+        .lumaInlineNavTitle()
+        .lumaHiddenNavBarBackground()
+        .lumaHideBackButton()
         .interactiveSwipeBack()
         .background(Color.lumaBackground.ignoresSafeArea())
     }

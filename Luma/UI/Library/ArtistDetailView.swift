@@ -51,9 +51,9 @@ struct ArtistDetailView: View {
                 .padding(.top, 18)
         }
         // Transparent (not hidden) bar keeps the native interactive swipe-back.
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .navigationBarBackButtonHidden(true)
+        .lumaInlineNavTitle()
+        .lumaHiddenNavBarBackground()
+        .lumaHideBackButton()
         .interactiveSwipeBack()
         .background(Color.lumaBackground.ignoresSafeArea())
     }

@@ -35,7 +35,7 @@ struct PlaylistsView: View {
             playlistsHeader
             playlistsContent
         }
-        .toolbarVisibility(.hidden, for: .navigationBar)
+        .lumaHideNavBar()
         .background(Color.lumaBackground.ignoresSafeArea())
         .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlist: $0) }
         .alert("Neue Playlist", isPresented: $showingCreate) {

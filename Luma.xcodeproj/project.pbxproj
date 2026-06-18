@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		D712485F2FC4F2E800A08C82 /* Luma.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Luma.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000010000000000000001 /* Luma.app (macOS) */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Luma.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -20,6 +21,13 @@
 
 /* Begin PBXFrameworksBuildPhase section */
 		D712485C2FC4F2E800A08C82 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000010000000000000002 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -41,6 +49,7 @@
 			isa = PBXGroup;
 			children = (
 				D712485F2FC4F2E800A08C82 /* Luma.app */,
+				AA0000010000000000000001 /* Luma.app (macOS) */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +79,28 @@
 			productReference = D712485F2FC4F2E800A08C82 /* Luma.app */;
 			productType = "com.apple.product-type.application";
 		};
+		AA0000010000000000000005 /* Luma macOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000010000000000000006 /* Build configuration list for PBXNativeTarget "Luma macOS" */;
+			buildPhases = (
+				AA0000010000000000000003 /* Sources */,
+				AA0000010000000000000002 /* Frameworks */,
+				AA0000010000000000000004 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				D71248612FC4F2E800A08C82 /* Luma */,
+			);
+			name = "Luma macOS";
+			packageProductDependencies = (
+			);
+			productName = Luma;
+			productReference = AA0000010000000000000001 /* Luma.app (macOS) */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -81,6 +112,9 @@
 				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					D712485E2FC4F2E800A08C82 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					AA0000010000000000000005 = {
 						CreatedOnToolsVersion = 26.5;
 					};
 				};
@@ -101,6 +135,7 @@
 			projectRoot = "";
 			targets = (
 				D712485E2FC4F2E800A08C82 /* Luma */,
+				AA0000010000000000000005 /* Luma macOS */,
 			);
 		};
 /* End PBXProject section */
@@ -113,10 +148,24 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000010000000000000004 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		D712485B2FC4F2E800A08C82 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000010000000000000003 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -328,6 +377,68 @@
 			};
 			name = Release;
 		};
+		AA0000010000000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QS5H87MR36;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = miotares.Luma;
+				PRODUCT_NAME = Luma;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		AA0000010000000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = QS5H87MR36;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = miotares.Luma;
+				PRODUCT_NAME = Luma;
+				SDKROOT = macosx;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = macosx;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -345,6 +456,15 @@
 			buildConfigurations = (
 				D712486B2FC4F2EB00A08C82 /* Debug */,
 				D712486C2FC4F2EB00A08C82 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000010000000000000006 /* Build configuration list for PBXNativeTarget "Luma macOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000010000000000000007 /* Debug */,
+				AA0000010000000000000008 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

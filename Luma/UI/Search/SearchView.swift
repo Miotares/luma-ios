@@ -44,7 +44,7 @@ struct SearchView: View {
             searchHeader
             searchContent
         }
-        .toolbarVisibility(.hidden, for: .navigationBar)
+        .lumaHideNavBar()
         .background(Color.lumaBackground.ignoresSafeArea())
         .navigationDestination(for: Album.self) { AlbumDetailView(album: $0) }
         .navigationDestination(for: Artist.self) { ArtistDetailView(artist: $0) }

@@ -103,9 +103,9 @@ struct PlaylistDetailView: View {
             .frame(maxWidth: .infinity)
         }
         // Transparent (not hidden) bar keeps the native interactive swipe-back.
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .navigationBarBackButtonHidden(true)
+        .lumaInlineNavTitle()
+        .lumaHiddenNavBarBackground()
+        .lumaHideBackButton()
         .interactiveSwipeBack()
         .background(Color.lumaBackground.ignoresSafeArea())
         .onAppear { editedName = playlist.name }

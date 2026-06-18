@@ -69,9 +69,9 @@ struct AlbumDetailView: View {
         }
         // Keep the bar PRESENT (transparent) so iOS's native interactive
         // swipe-back stays enabled — hiding it entirely disables the gesture.
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .navigationBarBackButtonHidden(true)
+        .lumaInlineNavTitle()
+        .lumaHiddenNavBarBackground()
+        .lumaHideBackButton()
         .interactiveSwipeBack()
         .background(Color.lumaBackground.ignoresSafeArea())
         .navigationDestination(item: $navArtist) { route in

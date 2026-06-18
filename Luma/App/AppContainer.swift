@@ -8,6 +8,8 @@ final class AppContainer {
     let queue: PlaybackQueue
     let importManager: ImportManager
     let library: LibraryRepository
+    let libraryFolders: LibraryFolders
+    let folderScanner: FolderLibraryScanner
     private(set) var currentPalette: ColorPalette?
 
     private let remoteCommands: RemoteCommandHandler
@@ -24,6 +26,9 @@ final class AppContainer {
         self.importManager = ImportManager(modelContext: modelContext)
         let lib = LibraryRepository(context: modelContext)
         self.library = lib
+        let folders = LibraryFolders()
+        self.libraryFolders = folders
+        self.folderScanner = FolderLibraryScanner(modelContext: modelContext, folders: folders, library: lib)
         self.remoteCommands = RemoteCommandHandler(player: p, queue: q)
 
         // Seed listening time from existing completed plays (one-time) so the new
@@ -46,5 +51,10 @@ final class AppContainer {
                 self.currentPalette = await PaletteExtractor.shared.palette(for: paletteId, imageData: artworkData)
             }
         }
+    }
+
+    /// Triggers a watched-folder rescan (macOS reference library). Never invoked on iOS.
+    func rescan() {
+        Task { await folderScanner.scan() }
     }
 }

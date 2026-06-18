@@ -4,6 +4,8 @@ import SwiftData
 @main
 struct LumaApp: App {
     let modelContainer: ModelContainer
+    /// Owned by the App (not RootView) so menu-bar commands can reach the same instance.
+    @State private var container: AppContainer
 
     /// Set when the store had to be reset on launch, so the UI can inform the user once.
     static let storeWasResetKey = "lumaStoreWasReset"
@@ -11,8 +13,9 @@ struct LumaApp: App {
     init() {
         let schema = Schema([Track.self, Album.self, Artist.self, Playlist.self, PlaylistEntry.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+        let created: ModelContainer
         do {
-            modelContainer = try ModelContainer(for: schema, configurations: [config])
+            created = try ModelContainer(for: schema, configurations: [config])
         } catch {
             // An incompatible/corrupt store (failed migration, corrupt WAL after an OS kill)
             // would otherwise crash on every launch. Move the existing store ASIDE — never
@@ -21,11 +24,13 @@ struct LumaApp: App {
             LumaApp.moveStoreAside(at: config.url)
             UserDefaults.standard.set(true, forKey: LumaApp.storeWasResetKey)
             do {
-                modelContainer = try ModelContainer(for: schema, configurations: [config])
+                created = try ModelContainer(for: schema, configurations: [config])
             } catch {
                 fatalError("SwiftData failed after store reset: \(error)")
             }
         }
+        modelContainer = created
+        _container = State(initialValue: AppContainer(modelContext: created.mainContext))
     }
 
     /// Moves the store (and its -shm/-wal sidecars) into a timestamped backup folder rather
@@ -46,26 +51,26 @@ struct LumaApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .environment(container)
                 .modelContainer(modelContainer)
                 .tint(Color.lumaAccent)
+                .preferredColorScheme(.dark)
         }
+        #if os(macOS)
+        .defaultSize(width: 1180, height: 760)
+        .commands { LumaCommands(app: container) }
+        #endif
     }
 }
 
-// Thin bootstrap view that owns AppContainer as @State so SwiftUI manages its lifetime.
+// Thin bootstrap view: picks the platform-appropriate shell. AppContainer is created and
+// owned by the App and injected via the environment.
 struct RootView: View {
-    @Environment(\.modelContext) private var modelContext
-    @State private var container: AppContainer?
-
     var body: some View {
-        if let container {
-            MainTabView()
-                .environment(container)
-        } else {
-            Color.clear
-                .onAppear {
-                    container = AppContainer(modelContext: modelContext)
-                }
-        }
+        #if os(macOS)
+        MacRootView()
+        #else
+        MainTabView()
+        #endif
     }
 }

@@ -36,7 +36,7 @@ struct MetadataEditorView: View {
             .background(Color.lumaBackground.ignoresSafeArea())
             .navigationTitle("Informationen")
             #if os(iOS) || os(visionOS)
-            .navigationBarTitleDisplayMode(.inline)
+            .lumaInlineNavTitle()
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -49,8 +49,8 @@ struct MetadataEditorView: View {
                         .foregroundStyle(Color.lumaAccent)
                 }
             }
-            .toolbarBackground(Color.lumaBackground, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .lumaDarkNavBackground()
+            .lumaDarkNavScheme()
         }
         .onAppear(perform: load)
     }
