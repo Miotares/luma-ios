@@ -419,7 +419,7 @@ struct MarqueeText: View {
 
 /// Heart button isolated so toggling "liked" re-renders only this — not the whole
 /// player (which would re-run the expensive blurred background).
-private struct PlayerLikeButton: View {
+struct PlayerLikeButton: View {
     @Environment(AppContainer.self) private var app
     let track: Track
 
@@ -441,7 +441,7 @@ private struct PlayerLikeButton: View {
 }
 
 /// Transport row isolated so play/pause/shuffle/repeat taps re-render only here.
-private struct PlayerTransport: View {
+struct PlayerTransport: View {
     @Environment(AppContainer.self) private var app
     private var isPlaying: Bool { app.player.state.isPlaying }
 

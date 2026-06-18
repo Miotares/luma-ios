@@ -42,8 +42,7 @@ struct MacRootView: View {
         }
         .animation(.smooth(duration: 0.3), value: app.player.state.isActive)
         .sheet(isPresented: $showingPlayer) {
-            PlayerView()
-                .frame(minWidth: 440, idealWidth: 480, minHeight: 660, idealHeight: 720)
+            MacPlayerView()
         }
         .onAppear {
             guard !didInitialScan else { return }
