@@ -46,9 +46,18 @@ struct MacNowPlayingBar: View {
             .frame(width: 520)
             .layoutPriority(1)
 
-            // Volume on the right; the flexible width keeps the transport centered.
-            HStack(spacing: 0) {
+            // Queue toggle + volume on the right; flexible width keeps transport centered.
+            HStack(spacing: 14) {
                 Spacer(minLength: 0)
+                Button(action: onOpen) {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white.opacity(0.75))
+                        .frame(width: 30, height: 30)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PressableButtonStyle())
+                .help("Warteschlange")
                 LumaVolumeControl()
             }
             .frame(maxWidth: .infinity)

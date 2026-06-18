@@ -39,6 +39,7 @@ struct QueueView: View {
                 .buttonStyle(.plain)
             }
 
+            #if os(iOS)
             Button { dismiss() } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 13, weight: .bold))
@@ -47,6 +48,7 @@ struct QueueView: View {
                     .background(Color.white.opacity(0.1), in: Circle())
             }
             .buttonStyle(.plain)
+            #endif
         }
         .padding(.horizontal, 20)
         .padding(.top, 30)

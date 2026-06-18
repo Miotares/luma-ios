@@ -10,7 +10,7 @@ enum MacSection: Hashable {
 struct MacRootView: View {
     @Environment(AppContainer.self) private var app
     @State private var section: MacSection? = .library
-    @State private var showingPlayer = false
+    @State private var showingQueue = false
     @State private var libraryPath = NavigationPath()
     @State private var searchPath = NavigationPath()
     @State private var playlistsPath = NavigationPath()
@@ -33,17 +33,18 @@ struct MacRootView: View {
             detail
                 .background(Color.lumaBackground.ignoresSafeArea())
         }
-        .environment(\.openNowPlaying) { showingPlayer = true }
+        .environment(\.openNowPlaying) { showingQueue = true }
+        .inspector(isPresented: $showingQueue) {
+            QueueView()
+                .inspectorColumnWidth(min: 300, ideal: 340, max: 460)
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if app.player.state.isActive {
-                MacNowPlayingBar(onOpen: { showingPlayer = true })
+                MacNowPlayingBar(onOpen: { showingQueue.toggle() })
                     .transition(.move(edge: .bottom))
             }
         }
         .animation(.smooth(duration: 0.3), value: app.player.state.isActive)
-        .sheet(isPresented: $showingPlayer) {
-            MacPlayerView()
-        }
         .onAppear {
             guard !didInitialScan else { return }
             didInitialScan = true
