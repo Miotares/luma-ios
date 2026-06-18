@@ -64,6 +64,11 @@ struct AlbumDetailView: View {
                         .glassEffect(.regular, in: .circle)
                         .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
                 }
+                #if os(macOS)
+                .menuStyle(.borderlessButton)
+                #endif
+                .menuIndicator(.hidden)
+                .fixedSize()
             }
             .padding(.horizontal, 18)
             .padding(.top, 18)

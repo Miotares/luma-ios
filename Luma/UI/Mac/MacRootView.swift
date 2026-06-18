@@ -1,15 +1,34 @@
 #if os(macOS)
 import SwiftUI
 
-enum MacSection: Hashable {
+enum MacSection: Hashable, CaseIterable, Identifiable {
     case library, search, playlists, statistics, settings
+    var id: Self { self }
+    var title: LocalizedStringKey {
+        switch self {
+        case .library:    return "Mediathek"
+        case .search:     return "Suchen"
+        case .playlists:  return "Playlists"
+        case .statistics: return "Statistiken"
+        case .settings:   return "Einstellungen"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .library:    return "square.grid.2x2"
+        case .search:     return "magnifyingglass"
+        case .playlists:  return "list.bullet"
+        case .statistics: return "chart.bar"
+        case .settings:   return "gearshape"
+        }
+    }
 }
 
 /// macOS shell: a sidebar (NavigationSplitView) replacing the iOS tab bar, with a
 /// full-width now-playing bar pinned to the bottom. The content views are shared with iOS.
 struct MacRootView: View {
     @Environment(AppContainer.self) private var app
-    @State private var section: MacSection? = .library
+    @State private var section: MacSection = .library
     @State private var showingQueue = false
     @State private var libraryPath = NavigationPath()
     @State private var searchPath = NavigationPath()
@@ -19,12 +38,16 @@ struct MacRootView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $section) {
-                Label("Mediathek", systemImage: "square.grid.2x2").tag(MacSection.library)
-                Label("Suchen", systemImage: "magnifyingglass").tag(MacSection.search)
-                Label("Playlists", systemImage: "list.bullet").tag(MacSection.playlists)
-                Label("Statistiken", systemImage: "chart.bar").tag(MacSection.statistics)
-                Label("Einstellungen", systemImage: "gearshape").tag(MacSection.settings)
+            List {
+                ForEach(MacSection.allCases) { item in
+                    Button { selectSection(item) } label: {
+                        Label(item.title, systemImage: item.icon)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color.white.opacity(section == item ? 0.1 : 0))
+                }
             }
             .navigationSplitViewColumnWidth(min: 200, ideal: 224, max: 300)
             .scrollContentBackground(.hidden)
@@ -52,8 +75,23 @@ struct MacRootView: View {
         }
     }
 
+    private func selectSection(_ s: MacSection) {
+        resetPath(s)
+        section = s
+    }
+
+    private func resetPath(_ s: MacSection) {
+        switch s {
+        case .library:    libraryPath = NavigationPath()
+        case .search:     searchPath = NavigationPath()
+        case .playlists:  playlistsPath = NavigationPath()
+        case .settings:   settingsPath = NavigationPath()
+        case .statistics: break
+        }
+    }
+
     @ViewBuilder private var detail: some View {
-        switch section ?? .library {
+        switch section {
         case .library:    NavigationStack(path: $libraryPath) { LibraryView(resetSignal: 0) }
         case .search:     NavigationStack(path: $searchPath) { SearchView() }
         case .playlists:  NavigationStack(path: $playlistsPath) { PlaylistsView() }

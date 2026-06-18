@@ -22,11 +22,19 @@ struct TrackRow: View {
         let isCurrentTrack = track.id == app.player.currentTrack?.id
 
         HStack(spacing: 4) {
+            #if os(macOS)
+            // A Button inside a List on macOS often needs the list focused before its
+            // first click registers; a plain tap gesture fires immediately.
+            rowLabel(isCurrentTrack: isCurrentTrack)
+                .contentShape(Rectangle())
+                .onTapGesture { onTap?() }
+            #else
             Button { onTap?() } label: {
                 rowLabel(isCurrentTrack: isCurrentTrack)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            #endif
 
             if showsMenu {
                 Menu {
@@ -41,16 +49,14 @@ struct TrackRow: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, (isCurrentTrack || isHovered) ? 8 : 0)
+        .padding(.horizontal, isCurrentTrack ? 8 : 0)
         .background(
             isCurrentTrack ? Color.white.opacity(0.07)
                 : (isHovered ? Color.white.opacity(0.05) : Color.clear),
             in: RoundedRectangle(cornerRadius: 9, style: .continuous)
         )
-        .padding(.horizontal, (isCurrentTrack || isHovered) ? -8 : 0)
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering }
-        }
+        .padding(.horizontal, isCurrentTrack ? -8 : 0)
+        .onHover { isHovered = $0 }
         .contextMenu { menuContent }
         .sheet(item: $albumSheet) { album in
             NavigationStack { AlbumDetailView(album: album) }

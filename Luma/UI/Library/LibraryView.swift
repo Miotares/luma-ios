@@ -87,11 +87,6 @@ struct LibraryView: View {
                     .allowsHitTesting(false)
                 }
         }
-        #if os(macOS)
-        // Clip to the detail column so the horizontal "recently added" carousel can't
-        // overscroll out under the translucent sidebar.
-        .clipped()
-        #endif
         .lumaHideNavBar()
         .background(Color.lumaBackground.ignoresSafeArea())
         .navigationDestination(for: Album.self) { AlbumDetailView(album: $0) }
@@ -198,6 +193,7 @@ struct LibraryView: View {
                     ForEach(recentlyAddedAlbums) { album in
                         NavigationLink(value: album) {
                             LibraryAlbumCard(album: album, cardWidth: 116)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -411,7 +407,13 @@ struct PlayShuffleHeader: View {
         HStack(spacing: 10) {
             button("Abspielen", icon: "play.fill", primary: true) { play(shuffle: false) }
             button("Shuffle", icon: "shuffle", primary: false) { play(shuffle: true) }
+            #if os(macOS)
+            Spacer(minLength: 0)
+            #endif
         }
+        #if os(macOS)
+        .padding(.top, 8)
+        #endif
     }
 
     private func button(_ label: LocalizedStringKey, icon: String, primary: Bool, action: @escaping () -> Void) -> some View {
@@ -419,8 +421,12 @@ struct PlayShuffleHeader: View {
             Label(label, systemImage: icon)
                 .font(.system(size: 16, weight: .semibold))
                 .tracking(-0.25)
+                #if os(macOS)
+                .frame(width: 150, height: 40)
+                #else
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
+                #endif
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(primary ? Color.lumaAccent : Color.white.opacity(0.1))
