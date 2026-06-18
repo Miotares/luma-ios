@@ -28,7 +28,7 @@ final class AppContainer {
         self.library = lib
         let folders = LibraryFolders()
         self.libraryFolders = folders
-        self.folderScanner = FolderLibraryScanner(modelContext: modelContext, folders: folders, library: lib)
+        self.folderScanner = FolderLibraryScanner(modelContainer: modelContext.container, folders: folders)
         self.remoteCommands = RemoteCommandHandler(player: p, queue: q)
 
         // Seed listening time from existing completed plays (one-time) so the new

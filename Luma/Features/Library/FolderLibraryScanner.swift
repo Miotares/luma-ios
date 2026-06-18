@@ -9,11 +9,11 @@ private struct ScannedFile: Sendable {
     let size: Int64?
 }
 
-/// Builds and maintains the macOS library by REFERENCING audio files in user-chosen
-/// folders (foobar style): files are never copied, never deleted. Each scan adds new
-/// files, re-reads changed ones (by modification date / size) and removes entries whose
-/// file is gone — but never prunes tracks behind a source that is currently unreachable
-/// (e.g. an unmounted drive), so the library survives offline volumes.
+/// Main-actor progress holder for the watched-folder library. The heavy work runs on a
+/// background ModelActor with its OWN context, so the bulk insert never touches the UI's
+/// main context — `@Query` reacts to every insert, so inserting on the main context made
+/// the library re-render per track (the carousel churn + lag). The background context is
+/// isolated until it saves ONCE at the end, so the library updates a single time, smoothly.
 @Observable
 final class FolderLibraryScanner {
     private(set) var isScanning = false
@@ -21,15 +21,12 @@ final class FolderLibraryScanner {
     private(set) var statusText = ""
     var lastError: String?
 
-    private let modelContext: ModelContext
+    private let modelContainer: ModelContainer
     private let folders: LibraryFolders
-    private let library: LibraryRepository
-    private let maxConcurrentParses = 5
 
-    init(modelContext: ModelContext, folders: LibraryFolders, library: LibraryRepository) {
-        self.modelContext = modelContext
+    init(modelContainer: ModelContainer, folders: LibraryFolders) {
+        self.modelContainer = modelContainer
         self.folders = folders
-        self.library = library
     }
 
     func scan() async {
@@ -38,52 +35,58 @@ final class FolderLibraryScanner {
         progress = 0
         statusText = "Scanne Ordner…"
         lastError = nil
-        // Pause autosave so the bulk insert doesn't fire a @Query update (and a full
-        // library re-render) on every run-loop turn — that caused the import lag and the
-        // "recently added" carousel thrashing. We save in batches instead.
-        modelContext.autosaveEnabled = false
-        defer { isScanning = false; statusText = ""; modelContext.autosaveEnabled = true }
+        defer { isScanning = false; statusText = "" }
 
         let sources = folders.folders
-
-        // 1) Enumerate reachable sources + their files off the main actor.
-        let (reachablePaths, onDisk) = await Task.detached(priority: .userInitiated) { () -> ([String], [String: ScannedFile]) in
-            let fm = FileManager.default
-            var reachable: [String] = []
-            var files: [String: ScannedFile] = [:]
-            for folder in sources {
-                var isDir: ObjCBool = false
-                guard fm.fileExists(atPath: folder.path, isDirectory: &isDir), isDir.boolValue else { continue }
-                reachable.append(folder.standardizedFileURL.path)
-                for url in ImportManager.audioFiles(in: folder) {
-                    let path = url.path(percentEncoded: false)
-                    let vals = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
-                    files[path] = ScannedFile(
-                        path: path,
-                        modified: vals?.contentModificationDate,
-                        size: vals?.fileSize.map(Int64.init)
-                    )
-                }
+        let worker = LibraryScanWorker(modelContainer: modelContainer)
+        await worker.scan(sources: sources) { [weak self] p, status in
+            Task { @MainActor in
+                guard let self else { return }
+                self.progress = p
+                if let status { self.statusText = status }
             }
-            return (reachable, files)
-        }.value
+        }
+    }
+}
 
-        let reachableSet = Set(reachablePaths)
+/// Does the enumerate → diff → parse → insert work on its own background context.
+@ModelActor
+actor LibraryScanWorker {
+    private let maxConcurrentParses = 5
+
+    func scan(sources: [URL], progress: @escaping @Sendable (Double, String?) -> Void) async {
+        // 1) Enumerate reachable sources + their files.
+        let fm = FileManager.default
+        var reachable: Set<String> = []
+        var onDisk: [String: ScannedFile] = [:]
+        for folder in sources {
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: folder.path, isDirectory: &isDir), isDir.boolValue else { continue }
+            reachable.insert(folder.standardizedFileURL.path)
+            for url in ImportManager.audioFiles(in: folder) {
+                let path = url.path(percentEncoded: false)
+                let vals = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+                onDisk[path] = ScannedFile(path: path,
+                                           modified: vals?.contentModificationDate,
+                                           size: vals?.fileSize.map(Int64.init))
+            }
+        }
+
+        modelContext.autosaveEnabled = false
 
         // 2) Index existing tracks by path.
         let existing = (try? modelContext.fetch(FetchDescriptor<Track>())) ?? []
         var byPath: [String: Track] = [:]
         for t in existing { byPath[t.filePath] = t }
 
-        // 3) Removals: file no longer on disk AND not merely behind an unreachable source.
+        // 3) Removals: gone from disk AND not merely behind an unreachable source.
         for track in existing where onDisk[track.filePath] == nil {
-            if Self.isUnderUnreachableSource(track.filePath, sources: sources, reachable: reachableSet) { continue }
-            try? library.delete(track: track)
+            if Self.isUnderUnreachableSource(track.filePath, sources: sources, reachable: reachable) { continue }
+            deleteTrack(track)
             byPath[track.filePath] = nil
         }
 
-        // 4) Build artist/album caches AFTER removals (which may have deleted empties),
-        //    so cached lookups never hand back a deleted object.
+        // 4) Caches built AFTER removals so they never hand back a deleted object.
         var artistCache: [String: Artist] = [:]
         for a in (try? modelContext.fetch(FetchDescriptor<Artist>())) ?? [] { artistCache[a.name] = a }
         var albumCache: [String: Album] = [:]
@@ -101,10 +104,15 @@ final class FolderLibraryScanner {
             }
         }
 
-        guard !work.isEmpty else { progress = 1; try? modelContext.save(); return }
-        statusText = "Lese Metadaten…"
+        guard !work.isEmpty else {
+            try? modelContext.save()
+            progress(1, nil)
+            return
+        }
+        progress(0, "Lese Metadaten…")
         let total = Double(work.count)
         var done = 0
+        var lastPct = -1
 
         await withTaskGroup(of: (ScannedFile, TrackMetadata?).self) { group in
             var index = 0
@@ -119,7 +127,6 @@ final class FolderLibraryScanner {
             }
             for _ in 0..<min(maxConcurrentParses, work.count) { submit() }
 
-            var sinceSave = 0
             while let (file, md) = await group.next() {
                 if let md {
                     if let track = byPath[file.path] {
@@ -128,18 +135,19 @@ final class FolderLibraryScanner {
                         let track = insert(metadata: md, file: file, artistCache: &artistCache, albumCache: &albumCache)
                         byPath[file.path] = track
                     }
-                    sinceSave += 1
-                    if sinceSave >= 400 { try? modelContext.save(); sinceSave = 0 }
                 }
                 done += 1
-                progress = Double(done) / total
+                let pct = Int(Double(done) / total * 100)
+                if pct != lastPct { lastPct = pct; progress(Double(done) / total, nil) }
                 submit()
             }
         }
+        // Single save → the main context's @Query refreshes exactly once.
         try? modelContext.save()
+        progress(1, nil)
     }
 
-    // MARK: - Insert / Update (main actor)
+    // MARK: - Insert / Update / Delete
 
     private func insert(metadata md: TrackMetadata, file: ScannedFile,
                         artistCache: inout [String: Artist], albumCache: inout [String: Album]) -> Track {
@@ -179,8 +187,7 @@ final class FolderLibraryScanner {
         track.fileSize = file.size
 
         let albumArtistName = md.albumArtistName ?? md.artistName
-        let needsRelink = track.albumTitle != md.albumTitle || track.album?.artistName != albumArtistName
-        guard needsRelink else { return }
+        guard track.albumTitle != md.albumTitle || track.album?.artistName != albumArtistName else { return }
 
         let oldAlbum = track.album
         let oldArtist = track.artist
@@ -203,6 +210,23 @@ final class FolderLibraryScanner {
             artistCache[oldArtist.name] = nil
             modelContext.delete(oldArtist)
         }
+    }
+
+    /// Removes a track's library entry (and now-empty album/artist). NEVER deletes the
+    /// source file — referenced tracks have no `localFileName`.
+    private func deleteTrack(_ track: Track) {
+        if let album = track.album {
+            album.tracks.removeAll { $0.id == track.id }
+            if album.tracks.isEmpty {
+                album.artist?.albums.removeAll { $0.id == album.id }
+                modelContext.delete(album)
+            }
+        }
+        if let artist = track.artist {
+            artist.tracks.removeAll { $0.id == track.id }
+            if artist.tracks.isEmpty && artist.albums.isEmpty { modelContext.delete(artist) }
+        }
+        modelContext.delete(track)
     }
 
     private func findOrCreateArtist(_ name: String, cache: inout [String: Artist]) -> Artist {
