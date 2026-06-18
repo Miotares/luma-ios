@@ -235,7 +235,10 @@ final class AudioPlayer {
         let delta = pos - lastListenPos
         guard delta > 0, delta < 2 else { return }   // ignore seeks / discontinuities
         pendingListen += delta
-        if pendingListen >= 5 { flushListen() }
+        // Flush at most once a minute (was every 5s): each flush saves the context, which
+        // refreshes the library @Query and re-rendered the "recently added" carousel mid-
+        // playback. Pause / stop / track-change still flush, so stats stay accurate.
+        if pendingListen >= 60 { flushListen() }
     }
 
     /// Persist the buffered listened-seconds onto the current track.

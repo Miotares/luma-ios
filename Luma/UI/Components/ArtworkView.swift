@@ -44,8 +44,13 @@ struct ArtworkView: View {
                 placeholder
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        // Size FIRST, then clip: in a horizontal ScrollView the proposed width is
+        // unbounded, so clipping before framing let `scaledToFill` blow up and then get
+        // squashed into the frame — the smeared cover strip in "recently added". Framing
+        // first constrains the fill to the square before it is clipped.
         .frame(width: size, height: size)
+        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .task(id: data) {
             if image == nil { image = await Self.loadImage(from: data) }
         }
