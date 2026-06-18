@@ -1,6 +1,86 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "Bibliothek neu scannen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rescan Library"
+          }
+        }
+      }
+    },
+    "Jetzt neu scannen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rescan Now"
+          }
+        }
+      }
+    },
+    "Musikordner" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music Folders"
+          }
+        }
+      }
+    },
+    "Musikordner hinzufügen…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Music Folder…"
+          }
+        }
+      }
+    },
+    "Ordner hinzufügen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add Folder"
+          }
+        }
+      }
+    },
+    "Pause" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pause"
+          }
+        }
+      }
+    },
+    "Scanne…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scanning…"
+          }
+        }
+      }
+    },
+    "Vorheriger Titel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Previous Track"
+          }
+        }
+      }
+    },
     "" : {
 
     },
