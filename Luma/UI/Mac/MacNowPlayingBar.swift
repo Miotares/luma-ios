@@ -18,7 +18,7 @@ struct MacNowPlayingBar: View {
         HStack(spacing: 16) {
             Button(action: onOpen) {
                 HStack(spacing: 10) {
-                    ArtworkView(data: track.album?.artworkData, cornerRadius: 6, size: 46)
+                    ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 6, size: 46)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(track.title)
                             .font(.system(size: 13, weight: .semibold))

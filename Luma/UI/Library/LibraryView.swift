@@ -36,10 +36,18 @@ struct LibraryView: View {
     @Environment(AppContainer.self) private var app
     var resetSignal: Int = 0
 
+    /// Bounded so the "recently added" section never re-fetches the whole tracks table
+    /// (it only needs enough rows to find 12 distinct albums).
+    private static let recentTracksDescriptor: FetchDescriptor<Track> = {
+        var d = FetchDescriptor<Track>(sortBy: [SortDescriptor(\.addedDate, order: .reverse)])
+        d.fetchLimit = 200
+        return d
+    }()
+
     @Query(sort: \Album.title)                        private var allAlbums: [Album]
     @Query(sort: \Artist.name)                        private var allArtists: [Artist]
     @Query(sort: \Track.title)                        private var allTracks: [Track]
-    @Query(sort: \Track.addedDate, order: .reverse)   private var recentTracks: [Track]
+    @Query(LibraryView.recentTracksDescriptor)        private var recentTracks: [Track]
 
     @State private var filter: LibraryFilter = .albums
     @State private var albumSort: AlbumSort  = .title
@@ -341,15 +349,14 @@ struct LibraryView: View {
     /// no album section headers — just one continuous list.
     private var sortedSongs: [Track] {
         allTracks.sorted { a, b in
-            let albumA = a.album?.title ?? a.albumTitle
-            let albumB = b.album?.title ?? b.albumTitle
-            if albumA != albumB {
-                return albumA.localizedStandardCompare(albumB) == .orderedAscending
+            // Use Track's denormalized columns, NOT a.album?.… — dereferencing the Album
+            // relationship per comparison faulted SwiftData across the whole library on
+            // every render, a major main-thread stall.
+            if a.albumTitle != b.albumTitle {
+                return a.albumTitle.localizedStandardCompare(b.albumTitle) == .orderedAscending
             }
-            let artistA = a.album?.artistName ?? a.artistName
-            let artistB = b.album?.artistName ?? b.artistName
-            if artistA != artistB {
-                return artistA.localizedStandardCompare(artistB) == .orderedAscending
+            if a.artistName != b.artistName {
+                return a.artistName.localizedStandardCompare(b.artistName) == .orderedAscending
             }
             if a.discNumber != b.discNumber { return a.discNumber < b.discNumber }
             if a.trackNumber != b.trackNumber { return a.trackNumber < b.trackNumber }
@@ -482,7 +489,7 @@ struct AlbumListRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ArtworkView(data: album.artworkData, cornerRadius: 8, size: 54)
+            ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 8, size: 54)
             VStack(alignment: .leading, spacing: 3) {
                 Text(album.title)
                     .font(.system(size: 16, weight: .medium))
@@ -513,9 +520,9 @@ struct LibraryAlbumCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let w = cardWidth {
-                ArtworkView(data: album.artworkData, cornerRadius: 14, size: w)
+                ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 14, size: w)
             } else {
-                ArtworkView(data: album.artworkData, cornerRadius: 14, size: nil)
+                ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 14, size: nil)
                     .aspectRatio(1, contentMode: .fit)
                     .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
             }

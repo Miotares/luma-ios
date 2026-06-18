@@ -10,7 +10,7 @@ struct TrackRow: View {
     var onTap: (() -> Void)?
 
     @Environment(AppContainer.self) private var app
-    @Query(sort: \Playlist.createdDate, order: .reverse) private var playlists: [Playlist]
+    @Environment(\.modelContext) private var modelContext
 
     @State private var albumSheet: Album?
     @State private var artistSheet: Artist?
@@ -125,6 +125,11 @@ struct TrackRow: View {
 
     @ViewBuilder
     private var menuContent: some View {
+        // Fetch playlists lazily, only when a menu is actually opened — a per-row @Query
+        // here meant thousands of live queries that all re-ran on every context save.
+        let playlists = (try? modelContext.fetch(
+            FetchDescriptor<Playlist>(sortBy: [SortDescriptor(\.createdDate, order: .reverse)])
+        )) ?? []
         Button {
             app.queue.playNext([track])
         } label: {
@@ -183,7 +188,7 @@ struct TrackRow: View {
     private func leadingView(isCurrentTrack: Bool) -> some View {
         if showArtwork {
             ZStack {
-                ArtworkView(data: track.album?.artworkData, cornerRadius: 6, size: 44)
+                ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 6, size: 44)
                 if isCurrentTrack {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(.black.opacity(0.5))

@@ -163,13 +163,13 @@ struct PlaylistArtworkView: View {
     /// album identity (not by artwork bytes) so four songs from the same album no longer
     /// repeat the same tile. Tracks without artwork are skipped; falls back to the single
     /// first cover when fewer than four distinct-album covers exist.
-    private var artworks: [Data] {
-        var result: [Data] = []
+    private var artworks: [(key: String, data: Data)] {
+        var result: [(key: String, data: Data)] = []
         var seenAlbums = Set<PersistentIdentifier>()
         for track in tracks {
             guard let album = track.album, let data = album.artworkData else { continue }
             guard seenAlbums.insert(album.persistentModelID).inserted else { continue }
-            result.append(data)
+            result.append((album.id.uuidString, data))
             if result.count == 4 { break }
         }
         return result
@@ -183,19 +183,19 @@ struct PlaylistArtworkView: View {
                     let half = (geo.size.width - 2) / 2
                     VStack(spacing: 2) {
                         HStack(spacing: 2) {
-                            ArtworkView(data: arts[0], cornerRadius: 0, size: half)
-                            ArtworkView(data: arts[1], cornerRadius: 0, size: half)
+                            ArtworkView(data: arts[0].data, cacheKey: arts[0].key, cornerRadius: 0, size: half)
+                            ArtworkView(data: arts[1].data, cacheKey: arts[1].key, cornerRadius: 0, size: half)
                         }
                         HStack(spacing: 2) {
-                            ArtworkView(data: arts[2], cornerRadius: 0, size: half)
-                            ArtworkView(data: arts[3], cornerRadius: 0, size: half)
+                            ArtworkView(data: arts[2].data, cacheKey: arts[2].key, cornerRadius: 0, size: half)
+                            ArtworkView(data: arts[3].data, cacheKey: arts[3].key, cornerRadius: 0, size: half)
                         }
                     }
                 }
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             } else {
-                ArtworkView(data: arts.first, cornerRadius: cornerRadius, size: nil)
+                ArtworkView(data: arts.first?.data, cacheKey: arts.first?.key, cornerRadius: cornerRadius, size: nil)
                     .aspectRatio(1, contentMode: .fit)
             }
         }

@@ -112,7 +112,12 @@ final class AudioPlayer {
         player?.play()
         state = .playing
 
-        nowPlaying.update(track: track, isPlaying: true)
+        // Defer the Now Playing write (full-res artwork decode + synchronous media-server
+        // IPC) off the tapped frame so the UI repaints immediately.
+        Task { @MainActor [weak self] in
+            guard let self, let t = self.currentTrack else { return }
+            self.nowPlaying.update(track: t, isPlaying: true)
+        }
     }
 
     func togglePlayPause() {
@@ -141,14 +146,16 @@ final class AudioPlayer {
         player?.pause()
         state = .paused
         flushListen()
-        nowPlaying.updatePlaybackState(isPlaying: false, elapsed: currentTime)
+        let elapsed = currentTime
+        Task { @MainActor [weak self] in self?.nowPlaying.updatePlaybackState(isPlaying: false, elapsed: elapsed) }
     }
 
     func resume() {
         guard state == .paused else { return }
         player?.play()
         state = .playing
-        nowPlaying.updatePlaybackState(isPlaying: true, elapsed: currentTime)
+        let elapsed = currentTime
+        Task { @MainActor [weak self] in self?.nowPlaying.updatePlaybackState(isPlaying: true, elapsed: elapsed) }
     }
 
     func stop() {
@@ -168,7 +175,8 @@ final class AudioPlayer {
         player?.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
         currentTime = time
         lastListenPos = time   // don't count the jump as listened time
-        nowPlaying.updatePlaybackState(isPlaying: state.isPlaying, elapsed: time)
+        let playing = state.isPlaying
+        Task { @MainActor [weak self] in self?.nowPlaying.updatePlaybackState(isPlaying: playing, elapsed: time) }
     }
 
     func skipForward(_ seconds: TimeInterval = 15) {
@@ -217,7 +225,9 @@ final class AudioPlayer {
             self.currentTime = time.seconds
             if let item = self.playerItem {
                 let dur = item.duration.seconds
-                if dur.isFinite && dur > 0 { self.duration = dur }
+                // Only assign on change — @Observable fires a mutation on every set, and
+                // this ran 4×/sec for the whole track, waking the scrubbers needlessly.
+                if dur.isFinite && dur > 0 && dur != self.duration { self.duration = dur }
             }
             self.accumulateListen(at: time.seconds)
             self.maybeStartCrossfade()

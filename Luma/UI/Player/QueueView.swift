@@ -122,7 +122,7 @@ struct QueueView: View {
     private func nowPlayingRow(track: Track) -> some View {
         HStack(spacing: 12) {
             ZStack {
-                ArtworkView(data: track.album?.artworkData, cornerRadius: 8, size: 48)
+                ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 8, size: 48)
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(.black.opacity(0.4))
                     .frame(width: 48, height: 48)

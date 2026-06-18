@@ -16,7 +16,9 @@ final class LibraryRepository {
     func recordPlay(track: Track) throws {
         track.playCount += 1
         track.lastPlayedDate = Date()
-        try context.save()
+        // Defer the save off the current frame — these stats writes invalidate the library
+        // @Query views, so saving inline stalled playback/track-change interactions.
+        Task { @MainActor in try? self.context.save() }
     }
 
     /// Adds actually-listened seconds to a track (called by the player in ~5s batches,
@@ -24,7 +26,7 @@ final class LibraryRepository {
     func addListenTime(to track: Track, seconds: TimeInterval) {
         guard seconds > 0 else { return }
         track.listenSeconds += seconds
-        try? context.save()
+        Task { @MainActor in try? self.context.save() }
     }
 
     private static let didSeedListenKey = "didSeedListenSeconds_v1"
