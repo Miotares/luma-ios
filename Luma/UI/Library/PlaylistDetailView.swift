@@ -67,7 +67,9 @@ struct PlaylistDetailView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            #if os(iOS) || os(visionOS)
             .ignoresSafeArea(.container, edges: .top)
+            #endif
             .lumaScrollClearance(playerActive: app.player.state.isActive)
             #if os(iOS) || os(visionOS)
             .environment(\.editMode, .constant(isEditing ? .active : .inactive))
@@ -170,6 +172,62 @@ struct PlaylistDetailView: View {
     // MARK: - Header
 
     private var playlistHeader: some View {
+        #if os(macOS)
+        macPlaylistHeader
+        #else
+        iosPlaylistHeader
+        #endif
+    }
+
+    #if os(macOS)
+    private var macPlaylistHeader: some View {
+        HStack(alignment: .bottom, spacing: 28) {
+            PlaylistArtworkView(tracks: tracks, cornerRadius: 12)
+                .frame(width: 220, height: 220)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.5), radius: 24, y: 14)
+
+            VStack(alignment: .leading, spacing: 0) {
+                if isEditingName {
+                    TextField("Playlist Name", text: $editedName)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 34, weight: .bold))
+                        .foregroundStyle(.white)
+                        .onSubmit { saveRename() }
+                } else {
+                    Text(playlist.name)
+                        .font(.system(size: 34, weight: .bold))
+                        .tracking(-0.6)
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .onTapGesture { isEditingName = true; editedName = playlist.name }
+                }
+
+                Text(verbatim: "\(CountText.songs(tracks.count)) · \(tracksDuration)")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .padding(.top, 6)
+
+                HStack(spacing: 12) {
+                    playlistActionButton(label: "Abspielen", icon: "play.fill", primary: true) { playAll(shuffle: false) }
+                        .frame(width: 160)
+                    playlistActionButton(label: "Shuffle", icon: "shuffle", primary: false) { playAll(shuffle: true) }
+                        .frame(width: 160)
+                }
+                .padding(.top, 22)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 28)
+        .padding(.top, 24)
+        .padding(.bottom, 22)
+    }
+    #endif
+
+    private var iosPlaylistHeader: some View {
         VStack(spacing: 18) {
             PlaylistArtworkView(tracks: tracks, cornerRadius: 20)
                 .frame(width: 210, height: 210)

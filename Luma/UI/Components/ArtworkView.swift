@@ -51,8 +51,10 @@ struct ArtworkView: View {
         .frame(width: size, height: size)
         .clipped()
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        // Reload whenever the data changes (e.g. the mini-player on a track switch).
+        // loadImage hits the in-memory cache first, so a known cover swaps instantly.
         .task(id: data) {
-            if image == nil { image = await Self.loadImage(from: data) }
+            image = await Self.loadImage(from: data)
         }
     }
 

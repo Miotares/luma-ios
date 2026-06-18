@@ -16,6 +16,7 @@ struct TrackRow: View {
     @State private var artistSheet: Artist?
     @State private var showMetadataEditor = false
     @State private var showDeleteConfirm = false
+    @State private var isHovered = false
 
     var body: some View {
         let isCurrentTrack = track.id == app.player.currentTrack?.id
@@ -40,12 +41,16 @@ struct TrackRow: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, isCurrentTrack ? 8 : 0)
+        .padding(.horizontal, (isCurrentTrack || isHovered) ? 8 : 0)
         .background(
-            isCurrentTrack ? Color.white.opacity(0.07) : Color.clear,
+            isCurrentTrack ? Color.white.opacity(0.07)
+                : (isHovered ? Color.white.opacity(0.05) : Color.clear),
             in: RoundedRectangle(cornerRadius: 9, style: .continuous)
         )
-        .padding(.horizontal, isCurrentTrack ? -8 : 0)
+        .padding(.horizontal, (isCurrentTrack || isHovered) ? -8 : 0)
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering }
+        }
         .contextMenu { menuContent }
         .sheet(item: $albumSheet) { album in
             NavigationStack { AlbumDetailView(album: album) }

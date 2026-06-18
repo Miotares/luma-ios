@@ -171,6 +171,11 @@ struct LumaBackButton: View {
     let action: () -> Void
 
     var body: some View {
+        #if os(macOS)
+        // macOS draws a native toolbar back button in the NavigationStack, so the custom
+        // floating one would be a duplicate.
+        EmptyView()
+        #else
         Button(action: action) {
             Image(systemName: "chevron.left")
                 .font(.system(size: 16, weight: .bold))
@@ -183,6 +188,7 @@ struct LumaBackButton: View {
                 .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
         }
         .buttonStyle(.plain)
+        #endif
     }
 }
 

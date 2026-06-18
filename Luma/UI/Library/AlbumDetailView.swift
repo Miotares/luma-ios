@@ -44,7 +44,9 @@ struct AlbumDetailView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            #if os(iOS) || os(visionOS)
             .ignoresSafeArea(.container, edges: .top)
+            #endif
             .lumaScrollClearance(playerActive: app.player.state.isActive)
 
             // Floating top bar: back (left) + options menu (right)
@@ -135,6 +137,66 @@ struct AlbumDetailView: View {
     // MARK: - Header
 
     private var albumHeader: some View {
+        #if os(macOS)
+        macAlbumHeader
+        #else
+        iosAlbumHeader
+        #endif
+    }
+
+    #if os(macOS)
+    private var macAlbumHeader: some View {
+        HStack(alignment: .bottom, spacing: 28) {
+            ArtworkView(data: album.artworkData, cornerRadius: 12, size: 220)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.5), radius: 24, y: 14)
+
+            VStack(alignment: .leading, spacing: 0) {
+                Text(album.title)
+                    .font(.system(size: 34, weight: .bold))
+                    .tracking(-0.6)
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let artist = album.artist {
+                    Button { navArtist = ArtistRoute(artist: artist) } label: { artistLabel }
+                        .buttonStyle(.plain)
+                } else {
+                    artistLabel
+                }
+
+                Text(macMetaLine)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .padding(.top, 6)
+
+                HStack(spacing: 12) {
+                    actionButton(label: "Abspielen", icon: "play.fill", primary: true) { playAll(shuffle: false) }
+                        .frame(width: 160)
+                    actionButton(label: "Shuffle", icon: "shuffle", primary: false) { playAll(shuffle: true) }
+                        .frame(width: 160)
+                }
+                .padding(.top, 22)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 28)
+        .padding(.top, 24)
+        .padding(.bottom, 22)
+    }
+
+    private var macMetaLine: String {
+        [album.year.map(String.init),
+         DurationText.hoursMinutes(album.totalDuration),
+         CountText.songs(album.tracks.count)].compactMap { $0 }.joined(separator: " · ")
+    }
+    #endif
+
+    private var iosAlbumHeader: some View {
         VStack(spacing: 0) {
             // Artwork — fixed square (matches mockup `size={210}`); a flexible
             // size inside the vertical ScrollView would grow unbounded.

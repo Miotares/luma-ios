@@ -87,6 +87,11 @@ struct LibraryView: View {
                     .allowsHitTesting(false)
                 }
         }
+        #if os(macOS)
+        // Clip to the detail column so the horizontal "recently added" carousel can't
+        // overscroll out under the translucent sidebar.
+        .clipped()
+        #endif
         .lumaHideNavBar()
         .background(Color.lumaBackground.ignoresSafeArea())
         .navigationDestination(for: Album.self) { AlbumDetailView(album: $0) }
