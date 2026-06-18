@@ -46,8 +46,12 @@ struct MacNowPlayingBar: View {
             .frame(width: 520)
             .layoutPriority(1)
 
-            // Balances the leading info block so the transport stays centered.
-            Color.clear.frame(maxWidth: .infinity)
+            // Volume on the right; the flexible width keeps the transport centered.
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                LumaVolumeControl()
+            }
+            .frame(maxWidth: .infinity)
         }
         .padding(.horizontal, 18)
         .frame(height: 66)
@@ -100,6 +104,36 @@ private struct MacScrubber: View {
         guard t.isFinite, t >= 0 else { return "0:00" }
         let s = Int(t)
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+/// Compact volume slider bound to the shared player (macOS). Used by the now-playing bar
+/// and the queue.
+struct LumaVolumeControl: View {
+    @Environment(AppContainer.self) private var app
+    var width: CGFloat = 96
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: app.player.volume < 0.01 ? "speaker.slash.fill" : "speaker.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 12)
+            Slider(
+                value: Binding(
+                    get: { Double(app.player.volume) },
+                    set: { app.player.volume = Float($0) }
+                ),
+                in: 0...1
+            )
+            .controlSize(.mini)
+            .tint(Color.lumaAccent)
+            .frame(width: width)
+            Image(systemName: "speaker.wave.2.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.5))
+                .frame(width: 16)
+        }
     }
 }
 #endif

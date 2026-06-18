@@ -38,7 +38,11 @@ final class FolderLibraryScanner {
         progress = 0
         statusText = "Scanne Ordner…"
         lastError = nil
-        defer { isScanning = false; statusText = "" }
+        // Pause autosave so the bulk insert doesn't fire a @Query update (and a full
+        // library re-render) on every run-loop turn — that caused the import lag and the
+        // "recently added" carousel thrashing. We save in batches instead.
+        modelContext.autosaveEnabled = false
+        defer { isScanning = false; statusText = ""; modelContext.autosaveEnabled = true }
 
         let sources = folders.folders
 
@@ -125,7 +129,7 @@ final class FolderLibraryScanner {
                         byPath[file.path] = track
                     }
                     sinceSave += 1
-                    if sinceSave >= 50 { try? modelContext.save(); sinceSave = 0 }
+                    if sinceSave >= 400 { try? modelContext.save(); sinceSave = 0 }
                 }
                 done += 1
                 progress = Double(done) / total

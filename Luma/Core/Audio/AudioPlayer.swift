@@ -11,8 +11,17 @@ final class AudioPlayer {
     private(set) var state: PlaybackState = .stopped
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
-    var volume: Float = 1.0 {
-        didSet { player?.volume = volume }
+    static let volumeDefaultsKey = "playerVolume"
+    var volume: Float = {
+        if let stored = UserDefaults.standard.object(forKey: AudioPlayer.volumeDefaultsKey) as? Double {
+            return Float(stored)
+        }
+        return 1.0
+    }() {
+        didSet {
+            player?.volume = volume
+            UserDefaults.standard.set(Double(volume), forKey: AudioPlayer.volumeDefaultsKey)
+        }
     }
 
     enum PlaybackState: Equatable {

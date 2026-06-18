@@ -58,3 +58,16 @@ extension View {
         #endif
     }
 }
+
+// MARK: - Gallery grid columns
+
+/// Album / playlist gallery columns: 4 across on macOS (wide window), 2 on iOS.
+#if os(macOS)
+let lumaGalleryColumnCount = 4
+#else
+let lumaGalleryColumnCount = 2
+#endif
+
+func lumaGalleryColumns(spacing: CGFloat) -> [GridItem] {
+    Array(repeating: GridItem(.flexible(), spacing: spacing), count: lumaGalleryColumnCount)
+}

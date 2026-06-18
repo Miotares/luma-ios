@@ -10,6 +10,9 @@ struct QueueView: View {
         VStack(spacing: 0) {
             queueHeader
             queueList
+            #if os(macOS)
+            queueVolumeBar
+            #endif
         }
         .background(Color.lumaBackground.ignoresSafeArea())
     }
@@ -170,3 +173,21 @@ private extension View {
         #endif
     }
 }
+
+#if os(macOS)
+private extension QueueView {
+    /// Volume control pinned to the bottom of the queue (macOS — no hardware volume keys
+    /// route to the app like on iOS).
+    var queueVolumeBar: some View {
+        HStack(spacing: 10) {
+            LumaVolumeControl(width: 150)
+            Spacer()
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .overlay(alignment: .top) {
+            Rectangle().fill(.white.opacity(0.08)).frame(height: 0.5)
+        }
+    }
+}
+#endif

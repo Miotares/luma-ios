@@ -249,10 +249,7 @@ struct LibraryView: View {
     }
 
     private var albumsGrid: some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible(), spacing: 18), GridItem(.flexible(), spacing: 18)],
-            spacing: 18
-        ) {
+        LazyVGrid(columns: lumaGalleryColumns(spacing: 18), spacing: 18) {
             ForEach(sortedAlbums) { album in
                 NavigationLink(value: album) {
                     LibraryAlbumCard(album: album, cardWidth: nil)

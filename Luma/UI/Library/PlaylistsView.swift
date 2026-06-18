@@ -82,10 +82,7 @@ struct PlaylistsView: View {
         } else {
             let map = validEntryTrackMap(allTracks)
             ScrollView {
-                LazyVGrid(
-                    columns: [GridItem(.flexible(), spacing: 18), GridItem(.flexible(), spacing: 18)],
-                    spacing: 22
-                ) {
+                LazyVGrid(columns: lumaGalleryColumns(spacing: 18), spacing: 22) {
                     ForEach(playlists) { playlist in
                         NavigationLink(value: playlist) {
                             PlaylistCard(playlist: playlist, tracks: playlist.safeSortedTracks(using: map))
