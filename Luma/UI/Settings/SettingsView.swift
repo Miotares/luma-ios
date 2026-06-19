@@ -3,6 +3,9 @@ import SwiftData
 #if os(macOS)
 import AppKit
 #endif
+#if os(iOS)
+import UIKit
+#endif
 
 struct SettingsView: View {
     @Environment(AppContainer.self) private var app
@@ -13,6 +16,9 @@ struct SettingsView: View {
     @State private var showingDeleteConfirm = false
     @State private var showingImport = false
     @State private var storageBytes: Int64 = 0
+    #if os(iOS)
+    @State private var currentIconName: String?
+    #endif
     @AppStorage(MediaStorage.backupDefaultsKey) private var backupEnabled = false
     @AppStorage(AudioPlayer.crossfadeDefaultsKey) private var crossfade: Double = 0
     @AppStorage(MainTabView.startupTabKey) private var startupTab = LumaTab.library.rawValue
@@ -35,6 +41,10 @@ struct SettingsView: View {
                     #endif
                     sectionLabel("Allgemein")
                     startBlock
+                    #if os(iOS)
+                    sectionLabel("App-Icon")
+                    appIconBlock
+                    #endif
                     sectionLabel("Wiedergabe")
                     crossfadeBlock
                     sectionLabel("Mediathek")
@@ -282,6 +292,84 @@ struct SettingsView: View {
         storageBytes = await Task.detached { MediaStorage.totalBytes }.value
     }
 }
+
+#if os(iOS)
+extension SettingsView {
+    /// Home-screen icon options. `alternateName == nil` is the primary (green) icon; the
+    /// others map to the alternate App Icon sets registered via the asset catalog.
+    fileprivate struct AppIconOption: Identifiable {
+        let alternateName: String?
+        let title: LocalizedStringKey
+        let preview: String
+        var id: String { alternateName ?? "__primary__" }
+    }
+
+    fileprivate static let appIconOptions: [AppIconOption] = [
+        .init(alternateName: nil,               title: "Grün",    preview: "IconPreviewGreen"),
+        .init(alternateName: "AppIconGraphite", title: "Graphit", preview: "IconPreviewGraphite"),
+        .init(alternateName: "AppIconSnow",     title: "Hell",    preview: "IconPreviewSnow"),
+        .init(alternateName: "AppIconBlue",     title: "Blau",    preview: "IconPreviewBlue"),
+        .init(alternateName: "AppIconViolet",   title: "Violett", preview: "IconPreviewViolet"),
+    ]
+
+    var appIconBlock: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(Self.appIconOptions) { iconTile($0) }
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 4)
+            }
+            Text("Das App-Icon auf dem Home-Bildschirm. iOS zeigt beim Wechsel einmalig einen Hinweis.")
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.4))
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 20)
+        }
+        .padding(.vertical, 14)
+        .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
+        .onAppear { currentIconName = UIApplication.shared.alternateIconName }
+    }
+
+    private func iconTile(_ option: AppIconOption) -> some View {
+        let isSelected = currentIconName == option.alternateName
+        return Button {
+            setAppIcon(option.alternateName)
+        } label: {
+            VStack(spacing: 7) {
+                Image(option.preview)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 58, height: 58)
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .strokeBorder(isSelected ? Color.lumaAccent : Color.white.opacity(0.12),
+                                          lineWidth: isSelected ? 2.5 : 1)
+                    }
+                Text(option.title)
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? .white : .white.opacity(0.5))
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Switches the home-screen icon. iOS itself shows the confirmation alert; we only
+    /// mirror the result back into the selection state.
+    func setAppIcon(_ name: String?) {
+        let application = UIApplication.shared
+        guard application.supportsAlternateIcons, application.alternateIconName != name else { return }
+        application.setAlternateIconName(name) { error in
+            Task { @MainActor in
+                currentIconName = (error == nil) ? name : application.alternateIconName
+            }
+        }
+    }
+}
+#endif
 
 #if os(macOS)
 extension SettingsView {
