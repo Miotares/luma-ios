@@ -25,10 +25,11 @@ extension Playlist {
 
 struct PlaylistsView: View {
     @Environment(AppContainer.self) private var app
-    @Query(sort: \Playlist.createdDate, order: .reverse) private var playlists: [Playlist]
+    @Query(sort: \Playlist.sortIndex) private var playlists: [Playlist]
     @Query private var allTracks: [Track]
     @State private var showingCreate = false
     @State private var newPlaylistName = ""
+    @State private var isReordering = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -52,21 +53,45 @@ struct PlaylistsView: View {
     // MARK: - Header
 
     private var playlistsHeader: some View {
-        HStack {
+        HStack(spacing: 10) {
             Text("Playlists")
                 .font(.system(size: 34, weight: .bold))
                 .tracking(-0.6)
                 .foregroundStyle(.white)
             Spacer()
-            Button { showingCreate = true } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 38, height: 38)
-                    .contentShape(Rectangle())
-                    .glassEffect(.regular, in: .circle)
+            if isReordering {
+                Button { withAnimation { isReordering = false } } label: {
+                    Text("Fertig")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .frame(height: 38)
+                        .contentShape(Rectangle())
+                        .glassEffect(.regular, in: .capsule)
+                }
+                .buttonStyle(.plain)
+            } else {
+                if playlists.count >= 2 {
+                    Button { withAnimation { isReordering = true } } label: {
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 38, height: 38)
+                            .contentShape(Rectangle())
+                            .glassEffect(.regular, in: .circle)
+                    }
+                    .buttonStyle(.plain)
+                }
+                Button { showingCreate = true } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .contentShape(Rectangle())
+                        .glassEffect(.regular, in: .circle)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -79,6 +104,8 @@ struct PlaylistsView: View {
     private var playlistsContent: some View {
         if playlists.isEmpty {
             emptyState
+        } else if isReordering {
+            reorderList
         } else {
             let map = validEntryTrackMap(allTracks)
             ScrollView {
@@ -105,6 +132,42 @@ struct PlaylistsView: View {
             }
             .lumaScrollClearance(playerActive: app.player.state.isActive)
         }
+    }
+
+    // MARK: - Reorder
+
+    /// Drag-to-reorder mode: the gallery collapses to a compact list with active edit
+    /// handles, so playlists can be dragged into a custom order. Order is persisted to
+    /// `Playlist.sortIndex` on every move.
+    private var reorderList: some View {
+        let map = validEntryTrackMap(allTracks)
+        return List {
+            ForEach(playlists) { playlist in
+                HStack(spacing: 12) {
+                    PlaylistArtworkView(tracks: playlist.safeSortedTracks(using: map), cornerRadius: 8)
+                        .frame(width: 46, height: 46)
+                    Text(playlist.name)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 16))
+            }
+            .onMove(perform: movePlaylists)
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.editMode, .constant(.active))
+        .lumaScrollClearance(playerActive: app.player.state.isActive)
+    }
+
+    private func movePlaylists(from source: IndexSet, to destination: Int) {
+        var ordered = playlists
+        ordered.move(fromOffsets: source, toOffset: destination)
+        try? app.library.reorderPlaylists(ordered)
     }
 
     private var emptyState: some View {

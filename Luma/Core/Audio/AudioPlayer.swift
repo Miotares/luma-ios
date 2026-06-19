@@ -38,6 +38,9 @@ final class AudioPlayer {
     /// Called in ~5-second batches with the seconds actually listened of a track, so
     /// stats can count partial (skipped) plays — not just tracks played to the end.
     var onListened: ((Track, TimeInterval) -> Void)?
+    /// Fired when the session state worth persisting changed — on pause/stop and on a
+    /// ~5s throttle while playing — so the queue + play head can be saved for resume.
+    var onPersist: (() -> Void)?
 
     private var player: AVPlayer?
     private var playerItem: AVPlayerItem?
@@ -47,6 +50,8 @@ final class AudioPlayer {
     // Actual-listening accumulation (drives the listening-time statistics).
     private var lastListenPos: TimeInterval = 0
     private var pendingListen: TimeInterval = 0
+    // Last position at which the session was persisted, to throttle saves while playing.
+    private var lastPersistPos: TimeInterval = 0
     // Bounds the skip-on-unplayable loop so an all-missing queue stops instead of looping.
     private var skipFailures = 0
 
@@ -120,6 +125,48 @@ final class AudioPlayer {
         }
     }
 
+    /// Loads a track WITHOUT starting playback, parked at `position` — used to restore the
+    /// previous session. Ends in `.paused`; the audio session is deliberately NOT activated
+    /// here (that happens on resume), so relaunching the app never interrupts other apps'
+    /// audio when the user doesn't actually press play.
+    func prepare(track: Track, at position: TimeInterval) async {
+        guard let url = resolveURL(for: track), isPlayable(url, localCopy: track.hasLocalCopy) else { return }
+
+        stopAccessingCurrentResource()
+        _ = url.startAccessingSecurityScopedResource()
+        accessedURL = url
+
+        teardown()
+
+        currentTrack = track
+        onTrackChanged?(track)
+        currentTime = max(0, position)
+        // Seed from the track's metadata duration so the progress bar is correct while
+        // parked & paused — the periodic time observer (which refines `duration` from the
+        // loaded item) only fires once playback actually starts.
+        duration = track.duration
+        lastListenPos = max(0, position)
+        lastPersistPos = max(0, position)
+
+        let asset = AVURLAsset(url: url)
+        let item = AVPlayerItem(asset: asset)
+        playerItem = item
+        player = AVPlayer(playerItem: item)
+        player?.volume = volume
+
+        addTimeObserver()
+        observeItemEnd()
+
+        // Park at the saved offset, paused. AVPlayer buffers the seek until the item is ready.
+        if position > 0 { seekPlayerItem(to: position) }
+        state = .paused
+
+        Task { @MainActor [weak self] in
+            guard let self, let t = self.currentTrack else { return }
+            self.nowPlaying.update(track: t, isPlaying: false)
+        }
+    }
+
     func togglePlayPause() {
         guard state.isActive else { return }
         cancelCrossfade()
@@ -127,7 +174,9 @@ final class AudioPlayer {
             player?.pause()
             state = .paused
             flushListen()
+            onPersist?()
         } else {
+            try? session.activate()
             player?.play()
             state = .playing
         }
@@ -146,12 +195,14 @@ final class AudioPlayer {
         player?.pause()
         state = .paused
         flushListen()
+        onPersist?()
         let elapsed = currentTime
         Task { @MainActor [weak self] in self?.nowPlaying.updatePlaybackState(isPlaying: false, elapsed: elapsed) }
     }
 
     func resume() {
         guard state == .paused else { return }
+        try? session.activate()
         player?.play()
         state = .playing
         let elapsed = currentTime
@@ -167,6 +218,7 @@ final class AudioPlayer {
         currentTime = 0
         duration = 0
         nowPlaying.clear()
+        onPersist?()
     }
 
     func seek(to time: TimeInterval) {
@@ -177,6 +229,14 @@ final class AudioPlayer {
         lastListenPos = time   // don't count the jump as listened time
         let playing = state.isPlaying
         Task { @MainActor [weak self] in self?.nowPlaying.updatePlaybackState(isPlaying: playing, elapsed: time) }
+    }
+
+    /// Raw player seek with no side effects — used while preparing a restored, paused
+    /// session. A standalone sync method so the synchronous `seek` overload is selected
+    /// (inside the `async` prepare(), the bare call would resolve to the awaited overload).
+    private func seekPlayerItem(to time: TimeInterval) {
+        player?.seek(to: CMTime(seconds: time, preferredTimescale: 600),
+                     toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
     func skipForward(_ seconds: TimeInterval = 15) {
@@ -230,6 +290,7 @@ final class AudioPlayer {
                 if dur.isFinite && dur > 0 && dur != self.duration { self.duration = dur }
             }
             self.accumulateListen(at: time.seconds)
+            self.maybePersistProgress(at: time.seconds)
             self.maybeStartCrossfade()
         }
     }
@@ -249,6 +310,16 @@ final class AudioPlayer {
         // refreshes the library @Query and re-rendered the "recently added" carousel mid-
         // playback. Pause / stop / track-change still flush, so stats stay accurate.
         if pendingListen >= 60 { flushListen() }
+    }
+
+    /// Saves the session at most every ~5 seconds while playing, so an unexpected
+    /// termination (or a background-kill mid-playback) restores close to the real position.
+    private func maybePersistProgress(at pos: TimeInterval) {
+        guard state == .playing else { return }
+        if abs(pos - lastPersistPos) >= 5 {
+            lastPersistPos = pos
+            onPersist?()
+        }
     }
 
     /// Persist the buffered listened-seconds onto the current track.

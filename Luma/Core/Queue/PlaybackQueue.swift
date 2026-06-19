@@ -5,7 +5,7 @@ import SwiftUI
 @Observable
 final class PlaybackQueue {
     enum ShuffleMode { case off, on }
-    enum RepeatMode { case off, one, all }
+    enum RepeatMode: Int { case off, one, all }
 
     // MARK: - State
 
@@ -176,6 +176,50 @@ final class PlaybackQueue {
         case .all: repeatMode = .one
         case .one: repeatMode = .off
         }
+    }
+
+    // MARK: - Persistence
+
+    /// Lightweight, file-reference-free snapshot of the queue for cross-launch restore.
+    /// Tracks are referenced by their stable UUID and re-resolved against the library on
+    /// load, so a track deleted between sessions is simply dropped.
+    struct Snapshot: Codable {
+        var itemIDs: [UUID]
+        var originalIDs: [UUID]
+        var currentID: UUID?
+        var shuffle: Bool
+        var repeatRaw: Int
+    }
+
+    func snapshot() -> Snapshot {
+        Snapshot(
+            itemIDs: items.map(\.id),
+            originalIDs: originalOrder.map(\.id),
+            currentID: currentTrack?.id,
+            shuffle: shuffleMode == .on,
+            repeatRaw: repeatMode.rawValue
+        )
+    }
+
+    /// Rebuilds the queue from a snapshot, resolving UUIDs via `resolve`. Returns false
+    /// when nothing usable remains (every referenced track was deleted), leaving the queue
+    /// untouched so the caller can skip restoring playback.
+    @discardableResult
+    func restore(from snap: Snapshot, resolve: (UUID) -> Track?) -> Bool {
+        let restoredItems = snap.itemIDs.compactMap(resolve)
+        guard !restoredItems.isEmpty else { return false }
+        let restoredOriginal = snap.originalIDs.compactMap(resolve)
+
+        items = restoredItems
+        originalOrder = restoredOriginal.isEmpty ? restoredItems : restoredOriginal
+        shuffleMode = snap.shuffle ? .on : .off
+        repeatMode = RepeatMode(rawValue: snap.repeatRaw) ?? .off
+        if let cid = snap.currentID, let idx = restoredItems.firstIndex(where: { $0.id == cid }) {
+            currentIndex = idx
+        } else {
+            currentIndex = 0
+        }
+        return true
     }
 
     // MARK: - Private

@@ -45,6 +45,20 @@ final class LibraryRepository {
         if changed { try? context.save() }
     }
 
+    private static let didSeedPlaylistOrderKey = "didSeedPlaylistOrder_v1"
+
+    /// One-time backfill of `Playlist.sortIndex` for libraries created before manual
+    /// ordering existed: assigns indices by `createdDate` (newest first) so the previous
+    /// visual order is preserved when the Playlists tab starts sorting by `sortIndex`.
+    func seedPlaylistOrderIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: Self.didSeedPlaylistOrderKey) else { return }
+        defer { UserDefaults.standard.set(true, forKey: Self.didSeedPlaylistOrderKey) }
+        guard let playlists = try? context.fetch(FetchDescriptor<Playlist>()), !playlists.isEmpty else { return }
+        let ordered = playlists.sorted { $0.createdDate > $1.createdDate }
+        for (index, playlist) in ordered.enumerated() { playlist.sortIndex = index }
+        try? context.save()
+    }
+
     func toggleLike(track: Track) throws {
         track.isLiked.toggle()
         // Persist off the tap's frame — a synchronous save can stall the frame that
@@ -52,6 +66,18 @@ final class LibraryRepository {
         // already observable; the save just follows on the next main-actor turn. Self is
         // @MainActor, so the context never leaves the main actor.
         Task { @MainActor in try? self.context.save() }
+    }
+
+    /// Sets the like state on many tracks at once (bulk selection). Only tracks whose
+    /// state actually changes are touched, and the whole batch is persisted in a single
+    /// save — this is an explicit user action, not a per-frame tap, so saving inline is fine.
+    func setLiked(_ tracks: [Track], liked: Bool) throws {
+        var changed = false
+        for track in tracks where track.isLiked != liked {
+            track.isLiked = liked
+            changed = true
+        }
+        if changed { try context.save() }
     }
 
     func updateTrack(
@@ -114,9 +140,20 @@ final class LibraryRepository {
     @discardableResult
     func createPlaylist(name: String) throws -> Playlist {
         let playlist = Playlist(name: name.trimmingCharacters(in: .whitespacesAndNewlines))
+        // New playlists go to the top (smallest sortIndex) — preserves the previous
+        // "newest first" feel without reindexing the existing ones.
+        let minIndex = (try? context.fetch(FetchDescriptor<Playlist>()))?.map(\.sortIndex).min() ?? 0
+        playlist.sortIndex = minIndex - 1
         context.insert(playlist)
         try context.save()
         return playlist
+    }
+
+    /// Persists a user-defined playlist order (Playlists-tab drag-to-reorder): reassigns a
+    /// contiguous 0..n `sortIndex` to the already-reordered array.
+    func reorderPlaylists(_ ordered: [Playlist]) throws {
+        for (index, playlist) in ordered.enumerated() { playlist.sortIndex = index }
+        try context.save()
     }
 
     func addTracks(_ tracks: [Track], to playlist: Playlist) throws {

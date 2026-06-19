@@ -6,6 +6,10 @@ final class Playlist {
     var id: UUID
     var name: String
     var createdDate: Date
+    /// User-defined order of playlists in the Playlists tab (lower = higher up). Defaulted
+    /// so the SwiftData migration stays lightweight; existing playlists are backfilled once
+    /// from `createdDate` by `LibraryRepository.seedPlaylistOrderIfNeeded()`.
+    var sortIndex: Int = 0
 
     @Relationship(deleteRule: .cascade, inverse: \PlaylistEntry.playlist)
     var entries: [PlaylistEntry]

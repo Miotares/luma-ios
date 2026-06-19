@@ -12,6 +12,10 @@ struct PlaylistDetailView: View {
     @State private var isEditing = false
     @State private var showingDeleteConfirm = false
 
+    @State private var isSelecting = false
+    @State private var selection: Set<UUID> = []
+    @State private var showingPlaylistPicker = false
+
     /// (entry, track) pairs resolved through the track→entry inverse, so entries whose
     /// track was deleted are skipped instead of crashing on `entry.track`.
     private var validPairs: [(entry: PlaylistEntry, track: Track)] {
@@ -39,31 +43,10 @@ struct PlaylistDetailView: View {
                     .listRowInsets(EdgeInsets())
 
                 ForEach(tracks) { track in
-                    TrackRow(track: track, showArtwork: true, showAlbum: true, showsMenu: true) {
-                        guard let idx = tracks.firstIndex(where: { $0.id == track.id }) else { return }
-                        app.queue.setQueue(tracks, startAt: idx)
-                        Task { await app.player.play(track: track) }
-                    }
-                    .frame(minHeight: 60)
-                    .listRowBackground(Color.clear)
-                    .trackRowSeparator()
-                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            removeTrack(track)
-                        } label: {
-                            Label("Aus Playlist entfernen", systemImage: "trash")
-                                .foregroundStyle(.red)
-                        }
-                        .tint(.red)
-                    }
-                    .trackQueueSwipeTrailing(
-                        playNext: { app.queue.playNext([track]) },
-                        addLast: { app.queue.append([track]) }
-                    )
+                    trackRow(track)
                 }
                 .onMove(perform: moveTracks)
-                .onDelete(perform: deleteTracks)
+                .onDelete(perform: deleteAction)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -74,18 +57,30 @@ struct PlaylistDetailView: View {
             #if os(iOS) || os(visionOS)
             .environment(\.editMode, .constant(isEditing ? .active : .inactive))
             #endif
+            .safeAreaInset(edge: .bottom) {
+                if isSelecting {
+                    TrackSelectionBar(
+                        count: selection.count,
+                        onAddToPlaylist: { showingPlaylistPicker = true },
+                        onLike: likeSelected
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
+            .animation(.smooth(duration: 0.25), value: isSelecting)
 
-            // Floating top bar: back (left) + options / done (right)
+            // Floating top bar: back / select-all (left) + options / done (right)
             HStack {
-                LumaBackButton { dismiss() }
+                if isSelecting {
+                    selectAllButton
+                } else {
+                    LumaBackButton { dismiss() }
+                }
                 Spacer()
                 if isEditing {
-                    Button("Fertig") { withAnimation { isEditing = false } }
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .frame(height: 36)
-                        .glassEffect(.regular, in: .capsule)
+                    pillButton("Fertig") { withAnimation { isEditing = false } }
+                } else if isSelecting {
+                    pillButton("Fertig") { exitSelection() }
                 } else {
                     Menu {
                         playlistMenu
@@ -105,6 +100,13 @@ struct PlaylistDetailView: View {
                     .fixedSize()
                 }
             }
+            .overlay {
+                if isSelecting {
+                    Text(selectionTitleKey)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            }
             .padding(.horizontal, 18)
             .padding(.top, 18)
             .frame(maxWidth: .infinity)
@@ -116,6 +118,9 @@ struct PlaylistDetailView: View {
         .interactiveSwipeBack()
         .background(Color.lumaBackground.ignoresSafeArea())
         .onAppear { editedName = playlist.name }
+        .sheet(isPresented: $showingPlaylistPicker) {
+            PlaylistPickerSheet(onPick: addSelected(to:))
+        }
         .confirmationDialog("Playlist löschen?", isPresented: $showingDeleteConfirm, titleVisibility: .visible) {
             Button("Playlist löschen", role: .destructive) {
                 try? app.library.deletePlaylist(playlist)
@@ -139,6 +144,11 @@ struct PlaylistDetailView: View {
             app.queue.append(tracks)
         } label: {
             Label("Zuletzt wiedergeben", systemImage: "text.line.last.and.arrowtriangle.forward")
+        }
+        Button {
+            enterSelection()
+        } label: {
+            Label("Auswählen", systemImage: "checkmark.circle")
         }
         Button {
             withAnimation { isEditing = true }
@@ -294,6 +304,115 @@ struct PlaylistDetailView: View {
                 .foregroundStyle(primary ? Color.black : Color.white)
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Selection
+
+    private var selectedTracks: [Track] {
+        tracks.filter { selection.contains($0.id) }
+    }
+
+    /// `nil` while selecting so the list's swipe-to-delete is suppressed in selection mode.
+    private var deleteAction: ((IndexSet) -> Void)? {
+        if isSelecting { return nil }
+        return { offsets in deleteTracks(offsets) }
+    }
+
+    private var allSelected: Bool {
+        !tracks.isEmpty && selection.count == tracks.count
+    }
+
+    private var selectionTitleKey: LocalizedStringKey {
+        selection.isEmpty ? "Auswählen" : "\(selection.count) ausgewählt"
+    }
+
+    /// One playlist track row — selectable while in selection mode (tap toggles, no
+    /// swipe/remove), otherwise the normal play row with remove + queue-swipe actions.
+    @ViewBuilder
+    private func trackRow(_ track: Track) -> some View {
+        let row = TrackRow(
+            track: track,
+            showArtwork: true,
+            showAlbum: true,
+            showsMenu: !isSelecting,
+            selectionMode: isSelecting,
+            isSelected: selection.contains(track.id)
+        ) {
+            if isSelecting {
+                toggleSelection(track)
+            } else {
+                guard let idx = tracks.firstIndex(where: { $0.id == track.id }) else { return }
+                app.queue.setQueue(tracks, startAt: idx)
+                Task { await app.player.play(track: track) }
+            }
+        }
+        .frame(minHeight: 60)
+        .listRowBackground(Color.clear)
+        .trackRowSeparator()
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+
+        row
+            .lumaApplyIf(!isSelecting) {
+                $0.contextMenu {
+                    Button(role: .destructive) {
+                        removeTrack(track)
+                    } label: {
+                        Label("Aus Playlist entfernen", systemImage: "trash")
+                            .foregroundStyle(.red)
+                    }
+                    .tint(.red)
+                }
+            }
+            .lumaApplyIf(!isSelecting) {
+                $0.trackQueueSwipeTrailing(
+                    playNext: { app.queue.playNext([track]) },
+                    addLast: { app.queue.append([track]) }
+                )
+            }
+    }
+
+    private var selectAllButton: some View {
+        pillButton(allSelected ? "Keine" : "Alle") { toggleSelectAll() }
+    }
+
+    private func pillButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .frame(height: 36)
+                .glassEffect(.regular, in: .capsule)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toggleSelection(_ track: Track) {
+        if selection.contains(track.id) { selection.remove(track.id) }
+        else { selection.insert(track.id) }
+    }
+
+    private func toggleSelectAll() {
+        if allSelected { selection.removeAll() }
+        else { selection = Set(tracks.map(\.id)) }
+    }
+
+    private func enterSelection() {
+        withAnimation { selection.removeAll(); isSelecting = true }
+    }
+
+    private func exitSelection() {
+        withAnimation { isSelecting = false; selection.removeAll() }
+    }
+
+    private func likeSelected() {
+        try? app.library.setLiked(selectedTracks, liked: true)
+        exitSelection()
+    }
+
+    private func addSelected(to playlist: Playlist) {
+        try? app.library.addTracks(selectedTracks, to: playlist)
+        exitSelection()
     }
 
     // MARK: - Actions

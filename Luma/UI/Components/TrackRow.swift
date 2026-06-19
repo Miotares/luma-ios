@@ -7,6 +7,11 @@ struct TrackRow: View {
     var showArtistName: Bool = true
     var showAlbum: Bool = false
     var showsMenu: Bool = false
+    /// When true the row shows a leading selection circle and its tap is expected to
+    /// toggle membership (the parent owns the actual selection set). Other affordances
+    /// (trailing menu, context menu) are suppressed by the caller while selecting.
+    var selectionMode: Bool = false
+    var isSelected: Bool = false
     var onTap: (() -> Void)?
 
     @Environment(AppContainer.self) private var app
@@ -57,7 +62,7 @@ struct TrackRow: View {
         )
         .padding(.horizontal, isCurrentTrack ? -8 : 0)
         .onHover { isHovered = $0 }
-        .contextMenu { menuContent }
+        .lumaApplyIf(!selectionMode) { $0.contextMenu { menuContent } }
         .sheet(item: $albumSheet) { album in
             NavigationStack { AlbumDetailView(album: album) }
         }
@@ -87,6 +92,12 @@ struct TrackRow: View {
 
     private func rowLabel(isCurrentTrack: Bool) -> some View {
         HStack(spacing: 12) {
+            if selectionMode {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 21))
+                    .foregroundStyle(isSelected ? Color.lumaAccent : .white.opacity(0.30))
+                    .transition(.scale.combined(with: .opacity))
+            }
             leadingView(isCurrentTrack: isCurrentTrack)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -128,7 +139,7 @@ struct TrackRow: View {
         // Fetch playlists lazily, only when a menu is actually opened — a per-row @Query
         // here meant thousands of live queries that all re-ran on every context save.
         let playlists = (try? modelContext.fetch(
-            FetchDescriptor<Playlist>(sortBy: [SortDescriptor(\.createdDate, order: .reverse)])
+            FetchDescriptor<Playlist>(sortBy: [SortDescriptor(\.sortIndex)])
         )) ?? []
         Button {
             app.queue.playNext([track])

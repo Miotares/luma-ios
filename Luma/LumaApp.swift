@@ -6,6 +6,7 @@ struct LumaApp: App {
     let modelContainer: ModelContainer
     /// Owned by the App (not RootView) so menu-bar commands can reach the same instance.
     @State private var container: AppContainer
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Set when the store had to be reset on launch, so the UI can inform the user once.
     static let storeWasResetKey = "lumaStoreWasReset"
@@ -55,6 +56,11 @@ struct LumaApp: App {
                 .modelContainer(modelContainer)
                 .tint(Color.lumaAccent)
                 .preferredColorScheme(.dark)
+                .onChange(of: scenePhase) { _, phase in
+                    // Persist the play head whenever we leave the foreground, so a
+                    // background-kill still resumes where the user left off.
+                    if phase != .active { container.savePlaybackState() }
+                }
         }
         #if os(macOS)
         .defaultSize(width: 1180, height: 760)

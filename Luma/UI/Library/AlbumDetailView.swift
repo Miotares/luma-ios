@@ -4,12 +4,16 @@ import SwiftData
 struct AlbumDetailView: View {
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \Playlist.createdDate, order: .reverse) private var playlists: [Playlist]
+    @Query(sort: \Playlist.sortIndex) private var playlists: [Playlist]
     let album: Album
 
     @State private var navArtist: ArtistRoute?
     @State private var showingAlbumEditor = false
     @State private var showingDeleteConfirm = false
+
+    @State private var isSelecting = false
+    @State private var selection: Set<UUID> = []
+    @State private var showingPlaylistPicker = false
 
     private struct ArtistRoute: Hashable { let artist: Artist }
 
@@ -26,15 +30,7 @@ struct AlbumDetailView: View {
                     .listRowInsets(EdgeInsets())
 
                 ForEach(album.sortedTracks) { track in
-                    TrackRow(track: track, showArtistName: false, showsMenu: true) { play(track: track) }
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .listRowBackground(Color.clear)
-                        .trackRowSeparator()
-                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                        .trackQueueSwipeTrailing(
-                            playNext: { app.queue.playNext([track]) },
-                            addLast: { app.queue.append([track]) }
-                        )
+                    trackRow(track)
                 }
 
                 trackListFooter
@@ -48,27 +44,53 @@ struct AlbumDetailView: View {
             .ignoresSafeArea(.container, edges: .top)
             #endif
             .lumaScrollClearance(playerActive: app.player.state.isActive)
-
-            // Floating top bar: back (left) + options menu (right)
-            HStack {
-                LumaBackButton { dismiss() }
-                Spacer()
-                Menu {
-                    albumMenu
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
-                        .glassEffect(.regular, in: .circle)
-                        .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+            .safeAreaInset(edge: .bottom) {
+                if isSelecting {
+                    TrackSelectionBar(
+                        count: selection.count,
+                        onAddToPlaylist: { showingPlaylistPicker = true },
+                        onLike: likeSelected
+                    )
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                #if os(macOS)
-                .menuStyle(.borderlessButton)
-                #endif
-                .menuIndicator(.hidden)
-                .fixedSize()
+            }
+            .animation(.smooth(duration: 0.25), value: isSelecting)
+
+            // Floating top bar: back / select-all (left) + options / done (right)
+            HStack {
+                if isSelecting {
+                    selectAllButton
+                } else {
+                    LumaBackButton { dismiss() }
+                }
+                Spacer()
+                if isSelecting {
+                    pillButton("Fertig") { exitSelection() }
+                } else {
+                    Menu {
+                        albumMenu
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                            .glassEffect(.regular, in: .circle)
+                            .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+                    }
+                    #if os(macOS)
+                    .menuStyle(.borderlessButton)
+                    #endif
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                }
+            }
+            .overlay {
+                if isSelecting {
+                    Text(selectionTitleKey)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
             }
             .padding(.horizontal, 18)
             .padding(.top, 18)
@@ -86,6 +108,9 @@ struct AlbumDetailView: View {
         }
         .sheet(isPresented: $showingAlbumEditor) {
             AlbumMetadataEditorView(album: album)
+        }
+        .sheet(isPresented: $showingPlaylistPicker) {
+            PlaylistPickerSheet(onPick: addSelected(to:))
         }
         .confirmationDialog("Album löschen?", isPresented: $showingDeleteConfirm, titleVisibility: .visible) {
             Button("Album löschen", role: .destructive) {
@@ -110,6 +135,11 @@ struct AlbumDetailView: View {
             app.queue.append(album.sortedTracks)
         } label: {
             Label("Zuletzt wiedergeben", systemImage: "text.line.last.and.arrowtriangle.forward")
+        }
+        Button {
+            enterSelection()
+        } label: {
+            Label("Auswählen", systemImage: "checkmark.circle")
         }
         if !playlists.isEmpty {
             Menu {
@@ -310,6 +340,90 @@ struct AlbumDetailView: View {
             .foregroundStyle(.white.opacity(0.35))
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, 20)
+    }
+
+    // MARK: - Selection
+
+    private var selectedTracks: [Track] {
+        album.sortedTracks.filter { selection.contains($0.id) }
+    }
+
+    private var allSelected: Bool {
+        !album.sortedTracks.isEmpty && selection.count == album.sortedTracks.count
+    }
+
+    private var selectionTitleKey: LocalizedStringKey {
+        selection.isEmpty ? "Auswählen" : "\(selection.count) ausgewählt"
+    }
+
+    /// One album track row — selectable while in selection mode (tap toggles, no swipe),
+    /// otherwise the normal play row with trailing queue-swipe actions.
+    @ViewBuilder
+    private func trackRow(_ track: Track) -> some View {
+        let row = TrackRow(
+            track: track,
+            showArtistName: false,
+            showsMenu: !isSelecting,
+            selectionMode: isSelecting,
+            isSelected: selection.contains(track.id)
+        ) {
+            if isSelecting { toggleSelection(track) } else { play(track: track) }
+        }
+        .frame(maxWidth: .infinity, minHeight: 52)
+        .listRowBackground(Color.clear)
+        .trackRowSeparator()
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+
+        row.lumaApplyIf(!isSelecting) {
+            $0.trackQueueSwipeTrailing(
+                playNext: { app.queue.playNext([track]) },
+                addLast: { app.queue.append([track]) }
+            )
+        }
+    }
+
+    private var selectAllButton: some View {
+        pillButton(allSelected ? "Keine" : "Alle") { toggleSelectAll() }
+    }
+
+    private func pillButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .frame(height: 36)
+                .glassEffect(.regular, in: .capsule)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toggleSelection(_ track: Track) {
+        if selection.contains(track.id) { selection.remove(track.id) }
+        else { selection.insert(track.id) }
+    }
+
+    private func toggleSelectAll() {
+        if allSelected { selection.removeAll() }
+        else { selection = Set(album.sortedTracks.map(\.id)) }
+    }
+
+    private func enterSelection() {
+        withAnimation { selection.removeAll(); isSelecting = true }
+    }
+
+    private func exitSelection() {
+        withAnimation { isSelecting = false; selection.removeAll() }
+    }
+
+    private func likeSelected() {
+        try? app.library.setLiked(selectedTracks, liked: true)
+        exitSelection()
+    }
+
+    private func addSelected(to playlist: Playlist) {
+        try? app.library.addTracks(selectedTracks, to: playlist)
+        exitSelection()
     }
 
     // MARK: - Actions
