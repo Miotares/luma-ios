@@ -28,7 +28,7 @@ enum SmartPlaylistKind: Hashable {
         switch self {
         case .mostPlayed:     return "flame.fill"
         case .recentlyPlayed: return "clock.arrow.circlepath"
-        case .recentlyAdded:  return "clock.badge.plus.fill"
+        case .recentlyAdded:  return "tray.and.arrow.down.fill"
         case .liked:          return "heart.fill"
         case .genre:          return "guitars.fill"
         case .decade:         return "calendar"
@@ -123,7 +123,7 @@ enum SmartSectionKind: String, CaseIterable, Identifiable {
         switch self {
         case .mostPlayed:     return "flame.fill"
         case .recentlyPlayed: return "clock.arrow.circlepath"
-        case .recentlyAdded:  return "clock.badge.plus.fill"
+        case .recentlyAdded:  return "tray.and.arrow.down.fill"
         case .liked:          return "heart.fill"
         case .genre:          return "guitars.fill"
         case .decade:         return "calendar"

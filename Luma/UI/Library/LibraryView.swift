@@ -48,10 +48,15 @@ struct LibraryView: View {
     @Query(sort: \Artist.name)                        private var allArtists: [Artist]
     @Query(sort: \Track.title)                        private var allTracks: [Track]
     @Query(LibraryView.recentTracksDescriptor)        private var recentTracks: [Track]
+    @Query(sort: \Playlist.sortIndex)                 private var allPlaylists: [Playlist]
 
     @State private var filter: LibraryFilter = .albums
     @State private var albumSort: AlbumSort  = .title
-    @State private var albumLayout: AlbumLayout = .gallery
+    @AppStorage("homeAlbumList")          private var albumAsList = false
+    @AppStorage("homeShowRecentlyAdded")  private var showRecentlyAdded = true
+    @AppStorage("homePinnedPlaylists")    private var pinnedData = Data()
+
+    private var albumLayout: AlbumLayout { albumAsList ? .list : .gallery }
 
     private var sortedAlbums: [Album] {
         switch albumSort {
@@ -99,6 +104,7 @@ struct LibraryView: View {
         .background(Color.lumaBackground.ignoresSafeArea())
         .navigationDestination(for: Album.self) { AlbumDetailView(album: $0) }
         .navigationDestination(for: Artist.self) { ArtistDetailView(artist: $0) }
+        .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlist: $0) }
         .onChange(of: resetSignal) { _, _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.7)) { filter = .albums }
         }
@@ -175,7 +181,11 @@ struct LibraryView: View {
     private var albumsContent: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if !recentlyAddedAlbums.isEmpty {
+                if !pinnedPlaylists.isEmpty {
+                    pinnedSection
+                        .padding(.top, 28)
+                }
+                if showRecentlyAdded && !recentlyAddedAlbums.isEmpty {
                     recentlyAddedSection
                         .padding(.top, 28)
                 }
@@ -185,6 +195,49 @@ struct LibraryView: View {
             .padding(.bottom, 20)
         }
         .lumaScrollClearance(playerActive: app.player.state.isActive)
+    }
+
+    /// Playlists the user pinned to the home screen (Settings → Startseite), in pin order.
+    private var pinnedPlaylists: [Playlist] {
+        guard let ids = try? JSONDecoder().decode([UUID].self, from: pinnedData), !ids.isEmpty else { return [] }
+        let byId = Dictionary(allPlaylists.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return ids.compactMap { byId[$0] }
+    }
+
+    private var pinnedSection: some View {
+        let map = validEntryTrackMap(allTracks)
+        return VStack(alignment: .leading, spacing: 0) {
+            Text("Angeheftet")
+                .font(.system(size: 20, weight: .bold))
+                .tracking(-0.35)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(pinnedPlaylists) { playlist in
+                        NavigationLink(value: playlist) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                PlaylistArtworkView(tracks: playlist.safeSortedTracks(using: map), cornerRadius: 14)
+                                    .frame(width: 116, height: 116)
+                                    .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
+                                Text(playlist.name)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.88))
+                                    .lineLimit(1)
+                                    .padding(.top, 7)
+                                    .frame(width: 116, alignment: .leading)
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 4)
+            }
+        }
     }
 
     private var recentlyAddedSection: some View {
@@ -233,7 +286,7 @@ struct LibraryView: View {
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        albumLayout = albumLayout == .gallery ? .list : .gallery
+                        albumAsList.toggle()
                     }
                 } label: {
                     smallIconButton(albumLayout == .gallery ? "list.bullet" : "square.grid.2x2")

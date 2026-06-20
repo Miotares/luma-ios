@@ -17,6 +17,7 @@ struct SettingsView: View {
     @State private var showingImport = false
     @State private var showingEqualizer = false
     @State private var showingSmartSettings = false
+    @State private var showingHomeSettings = false
     @State private var storageBytes: Int64 = 0
     #if os(iOS)
     @State private var currentIconName: String?
@@ -43,6 +44,7 @@ struct SettingsView: View {
                     #endif
                     sectionLabel("Allgemein")
                     startBlock
+                    homeBlock
                     smartPlaylistsBlock
                     #if os(iOS)
                     sectionLabel("App-Icon")
@@ -79,6 +81,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showingImport) { ImportView() }
         .sheet(isPresented: $showingEqualizer) { EqualizerView() }
         .sheet(isPresented: $showingSmartSettings) { SmartPlaylistSettingsView() }
+        .sheet(isPresented: $showingHomeSettings) { HomeSettingsView() }
         .task { await loadStorageUsage() }
         .confirmationDialog(
             "Alle Titel löschen?",
@@ -224,6 +227,28 @@ struct SettingsView: View {
         .padding(.vertical, 14)
         .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal, 16)
+    }
+
+    private var homeBlock: some View {
+        Button { showingHomeSettings = true } label: {
+            HStack {
+                Image(systemName: "house")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.lumaAccent)
+                    .frame(width: 28)
+                Text("Startseite").foregroundStyle(.white)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.25))
+            }
+            .padding(.horizontal, 20)
+            .frame(minHeight: 50)
+        }
+        .buttonStyle(LumaRowStyle())
+        .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
     }
 
     private var smartPlaylistsBlock: some View {
