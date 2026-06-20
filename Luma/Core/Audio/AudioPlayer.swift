@@ -47,7 +47,10 @@ final class AudioPlayer {
     // MARK: - Internal wiring
 
     weak var queue: PlaybackQueue?
-    var onTrackComplete: ((Track) -> Void)?
+    /// Fired ONCE per track session when the user has actually listened to the track (a listen
+    /// threshold is crossed, or it finished) — drives play count + recently/most-played, so a
+    /// sampled/skipped track doesn't count but a real listen does even without finishing.
+    var onTrackPlayed: ((Track) -> Void)?
     var onTrackChanged: ((Track) -> Void)?
     /// Called in ~minute batches with the seconds actually listened of a track, so stats can
     /// count partial (skipped) plays — not just tracks played to the end.
@@ -90,6 +93,9 @@ final class AudioPlayer {
     private var lastListenPos: TimeInterval = 0
     private var pendingListen: TimeInterval = 0
     private var lastPersistPos: TimeInterval = 0
+    // Play-count gating: count a "play" once per track session, after enough real listening.
+    private var sessionListened: TimeInterval = 0
+    private var playRecorded = false
     // Bounds the skip-on-unplayable loop so an all-missing queue stops instead of looping.
     private var skipFailures = 0
 
@@ -170,6 +176,8 @@ final class AudioPlayer {
         parkedTime = clamped
         lastListenPos = clamped
         lastPersistPos = clamped
+        sessionListened = 0
+        playRecorded = false
 
         schedule(decoded, track: track, on: node, from: clamped, generation: generation)
 
@@ -320,7 +328,8 @@ final class AudioPlayer {
     /// playing (gapless preload or crossfade incoming), so this mostly does bookkeeping.
     private func handleBoundary(finished: Track, generation: Int) {
         guard generation == scheduleGeneration else { return }   // stale (stop/seek/skip/new play)
-        onTrackComplete?(finished)
+        // A finished track counts as played (covers tracks shorter than the listen threshold).
+        if !playRecorded { playRecorded = true; onTrackPlayed?(finished) }
 
         if sleepMode == .endOfTrack {
             cancelSleepTimer()
@@ -354,6 +363,8 @@ final class AudioPlayer {
             currentTime = 0
             parkedTime = 0
             lastListenPos = 0
+            sessionListened = 0
+            playRecorded = false
             pendingAnchorSeconds = 0
             nowPlayingUpdate(isPlaying: true)
         } else {
@@ -472,6 +483,8 @@ final class AudioPlayer {
         try? engineGraph.start()
         incoming.play()
 
+        // The outgoing track is near its end; record its play if the threshold wasn't hit yet.
+        if !playRecorded, let outgoing = currentTrack { playRecorded = true; onTrackPlayed?(outgoing) }
         currentTrack = track
         currentDecoded = decoded
         onTrackChanged?(track)
@@ -480,6 +493,8 @@ final class AudioPlayer {
         currentTime = 0
         parkedTime = 0
         lastListenPos = 0
+        sessionListened = 0
+        playRecorded = false
         pendingAnchorSeconds = 0
         queue?.advanceIndexForCrossfade()
         nowPlayingUpdate(isPlaying: true)
@@ -584,7 +599,20 @@ final class AudioPlayer {
         let delta = pos - lastListenPos
         guard delta > 0, delta < 2 else { return }   // ignore seeks / discontinuities
         pendingListen += delta
+        sessionListened += delta
+        // Count a play once the user has genuinely listened (not just sampled the track).
+        if !playRecorded, sessionListened >= playCountThreshold(for: trackDuration),
+           let track = currentTrack {
+            playRecorded = true
+            onTrackPlayed?(track)
+        }
         if pendingListen >= 60 { flushListen() }
+    }
+
+    /// Seconds of real listening before a track counts as "played": 40% of its length, clamped
+    /// to [8s, 30s]; 30s when the length is unknown.
+    private func playCountThreshold(for duration: TimeInterval) -> TimeInterval {
+        duration > 0 ? min(max(duration * 0.4, 8), 30) : 30
     }
 
     private func maybePersistProgress(at pos: TimeInterval) {

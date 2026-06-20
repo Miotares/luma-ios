@@ -63,7 +63,7 @@ final class AppContainer {
             }
         }
 
-        p.onTrackComplete = { track in
+        p.onTrackPlayed = { track in
             try? lib.recordPlay(track: track)
         }
 
