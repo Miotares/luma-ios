@@ -156,7 +156,7 @@ actor LibraryScanWorker {
         let album = findOrCreateAlbum(title: md.albumTitle, artistName: albumArtistName,
                                       artist: artist, year: md.year, genre: md.genre, cache: &albumCache)
         if album.artworkData == nil, let raw = md.artworkData {
-            album.artworkData = raw
+            album.artworkData = md.artworkThumbnail ?? raw   // small thumbnail inline; full-res in ArtworkCache
             let albumID = album.id
             Task.detached { await ArtworkCache.shared.store(raw, for: albumID) }
         }

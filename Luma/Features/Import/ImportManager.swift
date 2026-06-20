@@ -217,9 +217,10 @@ final class ImportManager {
             genre: metadata.genre
         )
 
-        // Store artwork if album doesn't have it yet
+        // Store artwork if album doesn't have it yet: a small thumbnail inline on the row,
+        // the full-resolution original on disk in ArtworkCache (keyed by album id).
         if album.artworkData == nil, let raw = metadata.artworkData {
-            album.artworkData = raw
+            album.artworkData = metadata.artworkThumbnail ?? raw
             // Hoist the Sendable id off the main actor — reading album.id (a non-Sendable
             // @Model) inside the detached task would be a data race during bulk import.
             let albumID = album.id

@@ -12,6 +12,7 @@ private final class ImageBox {
 nonisolated(unsafe) private let artworkImageCache: NSCache<NSString, ImageBox> = {
     let cache = NSCache<NSString, ImageBox>()
     cache.countLimit = 500
+    cache.totalCostLimit = 96 * 1024 * 1024 // ~96 MB of decoded bitmaps — bounds memory growth
     return cache
 }()
 
@@ -83,18 +84,21 @@ struct ArtworkView: View {
         guard let data else { return nil }
         let key = key(for: data, cacheKey: cacheKey)
         if let key, let box = artworkImageCache.object(forKey: key) { return box.image }
-        let decoded = await Task.detached(priority: .userInitiated) { () -> Image? in
+        let decoded = await Task.detached(priority: .userInitiated) { () -> (image: Image, cost: Int)? in
             #if os(iOS) || os(visionOS)
             guard let ui = UIImage(data: data) else { return nil }
-            return Image(uiImage: ui)
+            let cost = Int(ui.size.width * ui.scale * ui.size.height * ui.scale) * 4
+            return (Image(uiImage: ui), cost)
             #elseif os(macOS)
             guard let ns = NSImage(data: data) else { return nil }
-            return Image(nsImage: ns)
+            let px = ns.representations.first.map { $0.pixelsWide * $0.pixelsHigh } ?? Int(ns.size.width * ns.size.height)
+            return (Image(nsImage: ns), px * 4)
             #else
             return nil
             #endif
         }.value
-        if let decoded, let key { artworkImageCache.setObject(ImageBox(decoded), forKey: key) }
-        return decoded
+        guard let decoded else { return nil }
+        if let key { artworkImageCache.setObject(ImageBox(decoded.image), forKey: key, cost: decoded.cost) }
+        return decoded.image
     }
 }

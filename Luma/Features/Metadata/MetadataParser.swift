@@ -12,6 +12,9 @@ struct TrackMetadata {
     var genre: String?
     var year: Int?
     var artworkData: Data?
+    /// Downscaled cover (~1024 px) for inline storage on the Album row; `artworkData` keeps
+    /// the full-resolution original (it goes to ArtworkCache on disk).
+    var artworkThumbnail: Data?
 }
 
 // Stateless value-type parser — nonisolated so it runs on the cooperative thread pool.
@@ -86,6 +89,10 @@ struct MetadataParser {
             }
         }
 
+        // Downscale once here, off the main actor, so the import sites can store a small
+        // thumbnail on the row while the full-res original goes to ArtworkCache.
+        let artworkThumbnail = artworkData.map { ImageDownscaler.thumbnail(from: $0) }
+
         return TrackMetadata(
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             artistName: artistName.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -96,7 +103,8 @@ struct MetadataParser {
             duration: durTime.seconds.isFinite ? durTime.seconds : 0,
             genre: genre,
             year: year,
-            artworkData: artworkData
+            artworkData: artworkData,
+            artworkThumbnail: artworkThumbnail
         )
     }
 }
