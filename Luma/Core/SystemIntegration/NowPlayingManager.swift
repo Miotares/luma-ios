@@ -42,12 +42,6 @@ final class NowPlayingManager {
         center.nowPlayingInfo = info
     }
 
-    func updatePlaybackState(isPlaying: Bool, elapsed: TimeInterval) {
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, elapsed)
-        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
-        center.nowPlayingInfo = info
-    }
-
     func clear() {
         currentTrackID = nil
         info = [:]

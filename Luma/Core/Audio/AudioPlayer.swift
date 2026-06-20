@@ -187,11 +187,11 @@ final class AudioPlayer {
             pendingAnchorSeconds = clamped
             state = .playing
             startDisplayTimer()
-            nowPlayingUpdate(isPlaying: true)
+            nowPlayingUpdate()
         } else {
             clock.invalidate()
             state = .paused
-            nowPlayingUpdate(isPlaying: false)
+            nowPlayingUpdate()
         }
     }
 
@@ -209,7 +209,7 @@ final class AudioPlayer {
         stopDisplayTimer()
         flushListen()
         onPersist?()
-        nowPlayingUpdate(isPlaying: false)
+        nowPlayingUpdate()
     }
 
     func resume() {
@@ -220,7 +220,7 @@ final class AudioPlayer {
         if !clock.isAnchored { pendingAnchorSeconds = parkedTime }
         state = .playing
         startDisplayTimer()
-        nowPlayingUpdate(isPlaying: true)
+        nowPlayingUpdate()
     }
 
     func stop() {
@@ -261,7 +261,7 @@ final class AudioPlayer {
             node.play()
             pendingAnchorSeconds = target
         }
-        nowPlayingUpdate(isPlaying: state.isPlaying)
+        nowPlayingUpdate()
     }
 
     func skipForward(_ seconds: TimeInterval = 15) {
@@ -340,7 +340,7 @@ final class AudioPlayer {
             currentTime = 0
             clock.invalidate()
             onPersist?()
-            nowPlayingUpdate(isPlaying: false)
+            nowPlayingUpdate()
             return
         }
 
@@ -366,7 +366,7 @@ final class AudioPlayer {
             sessionListened = 0
             playRecorded = false
             pendingAnchorSeconds = 0
-            nowPlayingUpdate(isPlaying: true)
+            nowPlayingUpdate()
         } else {
             // No gapless follow (queue end, rate change, or not preloaded) → normal advance.
             Task { await q.advance() }
@@ -497,7 +497,7 @@ final class AudioPlayer {
         playRecorded = false
         pendingAnchorSeconds = 0
         queue?.advanceIndexForCrossfade()
-        nowPlayingUpdate(isPlaying: true)
+        nowPlayingUpdate()
 
         let start = Date()
         let target = volume
@@ -561,17 +561,18 @@ final class AudioPlayer {
         return Double(decoded.lengthFrames) / rate
     }
 
-    private func nowPlayingUpdate(isPlaying: Bool) {
-        let track = currentTrack
-        let elapsed = currentTime
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            if let track {
-                self.nowPlaying.update(track: track, isPlaying: isPlaying, elapsed: elapsed)
-            } else {
-                self.nowPlaying.updatePlaybackState(isPlaying: isPlaying, elapsed: elapsed)
-            }
-        }
+    /// Pushes the CURRENT player state to the lock screen / Control Center. The MediaPlayer
+    /// IPC must run on the main actor; reading the live state at apply time (not a value frozen
+    /// at call time) means out-of-order delivery of these async hops can't leave a stale rate —
+    /// which is what got the lock-screen play/pause button stuck out of sync.
+    private func nowPlayingUpdate() {
+        Task { @MainActor [weak self] in self?.pushNowPlaying() }
+    }
+
+    @MainActor
+    private func pushNowPlaying() {
+        guard let track = currentTrack else { nowPlaying.clear(); return }
+        nowPlaying.update(track: track, isPlaying: state.isPlaying, elapsed: currentTime)
     }
 
     private func handleConfigurationChange() {
