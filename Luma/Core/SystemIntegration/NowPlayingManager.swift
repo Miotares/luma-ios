@@ -15,33 +15,41 @@ final class NowPlayingManager {
     /// synchronous IPC round-trip to the media server; mutating this cache instead
     /// keeps play/pause toggles off that hot path so the UI updates instantly.
     private var info: [String: Any] = [:]
+    /// The track whose metadata/artwork is currently in `info`, so a pause/resume doesn't
+    /// rebuild it (and doesn't momentarily reset elapsed to 0 → the lock-screen scrubber
+    /// jumping to 0 and snapping back).
+    private var currentTrackID: UUID?
 
-    func update(track: Track, isPlaying: Bool) {
-        var info: [String: Any] = [
-            MPMediaItemPropertyTitle: track.title,
-            MPMediaItemPropertyArtist: track.artistName,
-            MPMediaItemPropertyAlbumTitle: track.albumTitle,
-            MPMediaItemPropertyPlaybackDuration: track.duration,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: 0.0,
-            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0,
-            MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
-        ]
-
-        if let artworkData = track.album?.artworkData {
-            info[MPMediaItemPropertyArtwork] = makeArtwork(from: artworkData)
+    func update(track: Track, isPlaying: Bool, elapsed: TimeInterval) {
+        // Rebuild the (expensive) metadata + artwork ONLY when the track actually changes.
+        if track.id != currentTrackID {
+            currentTrackID = track.id
+            var info: [String: Any] = [
+                MPMediaItemPropertyTitle: track.title,
+                MPMediaItemPropertyArtist: track.artistName,
+                MPMediaItemPropertyAlbumTitle: track.albumTitle,
+                MPMediaItemPropertyPlaybackDuration: track.duration,
+                MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
+            ]
+            if let artworkData = track.album?.artworkData {
+                info[MPMediaItemPropertyArtwork] = makeArtwork(from: artworkData)
+            }
+            self.info = info
         }
-
-        self.info = info
+        // Always set the accurate elapsed + rate together, so the scrubber never resets.
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, elapsed)
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         center.nowPlayingInfo = info
     }
 
     func updatePlaybackState(isPlaying: Bool, elapsed: TimeInterval) {
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsed
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, elapsed)
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         center.nowPlayingInfo = info
     }
 
     func clear() {
+        currentTrackID = nil
         info = [:]
         center.nowPlayingInfo = nil
     }

@@ -566,8 +566,11 @@ final class AudioPlayer {
         let elapsed = currentTime
         Task { @MainActor [weak self] in
             guard let self else { return }
-            if let track { self.nowPlaying.update(track: track, isPlaying: isPlaying) }
-            self.nowPlaying.updatePlaybackState(isPlaying: isPlaying, elapsed: elapsed)
+            if let track {
+                self.nowPlaying.update(track: track, isPlaying: isPlaying, elapsed: elapsed)
+            } else {
+                self.nowPlaying.updatePlaybackState(isPlaying: isPlaying, elapsed: elapsed)
+            }
         }
     }
 
@@ -609,10 +612,11 @@ final class AudioPlayer {
         if pendingListen >= 60 { flushListen() }
     }
 
-    /// Seconds of real listening before a track counts as "played": 40% of its length, clamped
-    /// to [8s, 30s]; 30s when the length is unknown.
+    /// Seconds of real listening before a track counts as "played": 30% of its length, so a
+    /// song lands in recently/most-played once it's a third of the way through (30s when the
+    /// length is unknown).
     private func playCountThreshold(for duration: TimeInterval) -> TimeInterval {
-        duration > 0 ? min(max(duration * 0.4, 8), 30) : 30
+        duration > 0 ? duration * 0.3 : 30
     }
 
     private func maybePersistProgress(at pos: TimeInterval) {
