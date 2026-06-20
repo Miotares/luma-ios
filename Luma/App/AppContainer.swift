@@ -5,6 +5,7 @@ import Observation
 @Observable
 final class AppContainer {
     let player: AudioPlayer
+    let equalizer: EQManager
     let queue: PlaybackQueue
     let importManager: ImportManager
     let library: LibraryRepository
@@ -23,6 +24,9 @@ final class AppContainer {
         q.player = p
 
         self.player = p
+        let eq = EQManager()
+        eq.attach(to: p.graph)
+        self.equalizer = eq
         self.queue = q
         self.modelContext = modelContext
         self.importManager = ImportManager(modelContext: modelContext)

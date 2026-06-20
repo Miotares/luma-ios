@@ -62,6 +62,14 @@ final class LumaAudioGraph {
         engine.connect(eq, to: engine.outputNode, format: format)
     }
 
+    /// Reconnect a player node to the mixer with a specific input format (the track's native
+    /// format). The mixer resamples each input to the output rate, so different-rate tracks
+    /// play without a manual converter. Crossfade uses both nodes, each at its track's format.
+    func connect(player node: AVAudioPlayerNode, format: AVAudioFormat) {
+        engine.disconnectNodeOutput(node)
+        engine.connect(node, to: mixer, format: format)
+    }
+
     /// Rewire the graph for a new processing format (different sample rate). The caller is
     /// expected to stop/restart the engine and reschedule around this.
     func reconfigure(for newFormat: AVAudioFormat) {

@@ -14,6 +14,9 @@ final class PlayheadClock {
     private var anchorSampleTime: AVAudioFramePosition = 0
     private var hasAnchor = false
 
+    /// Whether a usable anchor is set (render time was available when anchored).
+    var isAnchored: Bool { hasAnchor }
+
     /// Pin `seconds` to the node's current render position. Call right after scheduling +
     /// starting playback at a known offset (play / seek / gapless boundary).
     func anchor(seconds: TimeInterval, on node: AVAudioPlayerNode) {
