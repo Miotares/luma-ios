@@ -17,21 +17,25 @@ nonisolated(unsafe) private let artworkImageCache: NSCache<NSString, ImageBox> =
 }()
 
 struct ArtworkView: View {
-    let data: Data?
+    /// The bytes are provided lazily (autoclosure) so a row NEVER faults the SwiftData artwork
+    /// blob just to pass it in — the provider is called only on a cache miss, inside `.task`
+    /// (off the scroll-build frame). Call sites are unchanged: `ArtworkView(data: album.artworkData)`.
+    private let dataProvider: () -> Data?
     var cacheKey: String?
     var cornerRadius: CGFloat = 8
     var size: CGFloat? = nil
 
     @State private var image: Image?
 
-    init(data: Data?, cacheKey: String? = nil, cornerRadius: CGFloat = 8, size: CGFloat? = nil) {
-        self.data = data
+    init(data: @autoclosure @escaping () -> Data?, cacheKey: String? = nil,
+         cornerRadius: CGFloat = 8, size: CGFloat? = nil) {
+        self.dataProvider = data
         self.cacheKey = cacheKey
         self.cornerRadius = cornerRadius
         self.size = size
-        // Seed synchronously from the cache so a known cover shows on the first frame.
-        if let key = Self.key(for: data, cacheKey: cacheKey),
-           let box = artworkImageCache.object(forKey: key) {
+        // Seed from the decoded-image cache by the CHEAP key, WITHOUT reading the data, so a
+        // known cover shows on the first frame and the row doesn't fault the blob to pass it.
+        if let cacheKey, let box = artworkImageCache.object(forKey: cacheKey as NSString) {
             _image = State(initialValue: box.image)
         }
     }
@@ -49,18 +53,20 @@ struct ArtworkView: View {
         .frame(width: size, height: size)
         .clipped()
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        // Reload when the cover changes (e.g. the mini-player on a track switch). Keyed on the
-        // cheap cacheKey (the id) when given, else the byte COUNT — never the raw Data, whose
-        // Equatable diff is O(bytes) and ran on every body re-eval. loadImage hits the cache
-        // first, so a known cover swaps instantly.
-        .task(id: taskID) { image = await Self.loadImage(from: data, cacheKey: cacheKey) }
-    }
-
-    /// Stable, cheap identity for `.task` — the id when supplied, otherwise a byte-count proxy.
-    private var taskID: String? {
-        if let cacheKey { return cacheKey }
-        guard let data else { return nil }
-        return "n\(data.count)"
+        // Resolve off the row-build path: check the image cache by the cheap key; only call the
+        // data provider (which may fault the SwiftData blob) on a miss, here on the main actor
+        // but AFTER the row has been laid out — so fast scrolling never blocks on blob reads.
+        // Re-runs whenever cacheKey changes (e.g. the mini-player on a track switch), so the
+        // cover always reloads for the new id — cache hit is instant, miss reads the blob here.
+        .task(id: cacheKey) {
+            if let cacheKey, let box = artworkImageCache.object(forKey: cacheKey as NSString) {
+                image = box.image
+                return
+            }
+            guard let data = dataProvider() else { image = nil; return }
+            let key: NSString? = cacheKey.map { $0 as NSString } ?? (String(data.hashValue) as NSString)
+            image = await Self.decode(data, key: key)
+        }
     }
 
     private var placeholder: some View {
@@ -72,18 +78,9 @@ struct ArtworkView: View {
         }
     }
 
-    /// Caller-supplied id (cheap) when available; otherwise a one-time content hash. Never
-    /// lets NSCache hash the raw Data on every operation.
-    private static func key(for data: Data?, cacheKey: String?) -> NSString? {
-        if let cacheKey { return cacheKey as NSString }
-        guard let data else { return nil }
-        return String(data.hashValue) as NSString
-    }
-
-    private static func loadImage(from data: Data?, cacheKey: String?) async -> Image? {
-        guard let data else { return nil }
-        let key = key(for: data, cacheKey: cacheKey)
-        if let key, let box = artworkImageCache.object(forKey: key) { return box.image }
+    /// Decodes image bytes off the main actor and stores the result in the cache (cost =
+    /// decoded pixel bytes, so the totalCostLimit can bound memory).
+    private static func decode(_ data: Data, key: NSString?) async -> Image? {
         let decoded = await Task.detached(priority: .userInitiated) { () -> (image: Image, cost: Int)? in
             #if os(iOS) || os(visionOS)
             guard let ui = UIImage(data: data) else { return nil }

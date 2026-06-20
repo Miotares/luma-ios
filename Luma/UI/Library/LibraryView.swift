@@ -52,6 +52,9 @@ struct LibraryView: View {
 
     @State private var filter: LibraryFilter = .albums
     @State private var albumSort: AlbumSort  = .title
+    // Cached, recomputed only when `allTracks` actually changes — the locale-aware sort of the
+    // whole table is far too expensive to re-run on every body eval (e.g. each play/pause).
+    @State private var sortedSongs: [Track] = []
     @AppStorage("homeAlbumList")          private var albumAsList = false
     @AppStorage("homeShowRecentlyAdded")  private var showRecentlyAdded = true
     @AppStorage("homePinnedPlaylists")    private var pinnedData = Data()
@@ -394,14 +397,18 @@ struct LibraryView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .lumaScrollClearance(playerActive: app.player.state.isActive, top: 20)
+                .onChange(of: allTracks, initial: true) { _, tracks in
+                    sortedSongs = Self.sortSongs(tracks)
+                }
             }
         }
     }
 
     /// Flat list: album tracks stay contiguous and in track-number order, but with
-    /// no album section headers — just one continuous list.
-    private var sortedSongs: [Track] {
-        allTracks.sorted { a, b in
+    /// no album section headers — just one continuous list. Computed off `allTracks` only
+    /// when it changes (see the `@State sortedSongs` cache), not on every render.
+    private static func sortSongs(_ tracks: [Track]) -> [Track] {
+        tracks.sorted { a, b in
             // Use Track's denormalized columns, NOT a.album?.… — dereferencing the Album
             // relationship per comparison faulted SwiftData across the whole library on
             // every render, a major main-thread stall.
