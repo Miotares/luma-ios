@@ -39,6 +39,8 @@ struct PlaylistsView: View {
         .lumaHideNavBar()
         .background(Color.lumaBackground.ignoresSafeArea())
         .navigationDestination(for: Playlist.self) { PlaylistDetailView(playlist: $0) }
+        .navigationDestination(for: SmartPlaylistKind.self) { SmartPlaylistDetailView(kind: $0) }
+        .navigationDestination(for: SmartHub.self) { SmartHubView(hub: $0) }
         .alert("Neue Playlist", isPresented: $showingCreate) {
             TextField("Name", text: $newPlaylistName)
             Button("Erstellen") {
@@ -71,6 +73,7 @@ struct PlaylistsView: View {
                 }
                 .buttonStyle(.plain)
             } else {
+                #if os(iOS) || os(visionOS)
                 if playlists.count >= 2 {
                     Button { withAnimation { isReordering = true } } label: {
                         Image(systemName: "arrow.up.arrow.down")
@@ -82,6 +85,7 @@ struct PlaylistsView: View {
                     }
                     .buttonStyle(.plain)
                 }
+                #endif
                 Button { showingCreate = true } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 17, weight: .semibold))
@@ -100,34 +104,55 @@ struct PlaylistsView: View {
 
     // MARK: - Content
 
+    private var hasGenres: Bool {
+        allTracks.contains { !($0.genre?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) }
+    }
+    private var hasYears: Bool {
+        allTracks.contains { $0.year != nil }
+    }
+
     @ViewBuilder
     private var playlistsContent: some View {
-        if playlists.isEmpty {
-            emptyState
-        } else if isReordering {
+        if isReordering {
             reorderList
         } else {
             let map = validEntryTrackMap(allTracks)
             ScrollView {
-                LazyVGrid(columns: lumaGalleryColumns(spacing: 18), spacing: 22) {
-                    ForEach(playlists) { playlist in
-                        NavigationLink(value: playlist) {
-                            PlaylistCard(playlist: playlist, tracks: playlist.safeSortedTracks(using: map))
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                try? app.library.deletePlaylist(playlist)
-                            } label: {
-                                Label("Playlist löschen", systemImage: "trash")
-                                    .foregroundStyle(.red)
+                VStack(alignment: .leading, spacing: 0) {
+                    SmartPlaylistsSection(hasGenres: hasGenres, hasYears: hasYears)
+                        .padding(.top, 8)
+
+                    Text("Deine Playlists")
+                        .font(.system(size: 20, weight: .bold))
+                        .tracking(-0.35)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 28)
+                        .padding(.bottom, 12)
+
+                    if playlists.isEmpty {
+                        playlistsEmptyHint
+                    } else {
+                        LazyVGrid(columns: lumaGalleryColumns(spacing: 18), spacing: 22) {
+                            ForEach(playlists) { playlist in
+                                NavigationLink(value: playlist) {
+                                    PlaylistCard(playlist: playlist, tracks: playlist.safeSortedTracks(using: map))
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        try? app.library.deletePlaylist(playlist)
+                                    } label: {
+                                        Label("Playlist löschen", systemImage: "trash")
+                                            .foregroundStyle(.red)
+                                    }
+                                    .tint(.red)
+                                }
                             }
-                            .tint(.red)
                         }
+                        .padding(.horizontal, 16)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
                 .padding(.bottom, 20)
             }
             .lumaScrollClearance(playerActive: app.player.state.isActive)
@@ -160,7 +185,9 @@ struct PlaylistsView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        #if os(iOS) || os(visionOS)
         .environment(\.editMode, .constant(.active))
+        #endif
         .lumaScrollClearance(playerActive: app.player.state.isActive)
     }
 
@@ -170,22 +197,22 @@ struct PlaylistsView: View {
         try? app.library.reorderPlaylists(ordered)
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 16) {
-            Spacer()
+    private var playlistsEmptyHint: some View {
+        VStack(spacing: 10) {
             Image(systemName: "music.note.list")
-                .font(.system(size: 52))
+                .font(.system(size: 40))
                 .foregroundStyle(.white.opacity(0.18))
             Text("Keine Playlists")
-                .font(.title3.bold())
+                .font(.subheadline.bold())
                 .foregroundStyle(.white.opacity(0.4))
             Text("Tippe auf + um deine erste Playlist zu erstellen.")
-                .font(.subheadline)
+                .font(.caption)
                 .foregroundStyle(.white.opacity(0.25))
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-            Spacer()
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 26)
+        .padding(.horizontal, 40)
     }
 }
 
