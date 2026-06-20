@@ -279,79 +279,58 @@ struct SmartPlaylistSettingsView: View {
         }
     }
 
-    /// Drop `dragged` just before `target` and persist the new order.
-    private func reorder(moving dragged: SmartSectionKind, to target: SmartSectionKind) {
-        guard dragged != target else { return }
+    /// Native List reorder — shift the kinds and persist the new order.
+    private func move(from source: IndexSet, to destination: Int) {
         var kinds = lumaSmartOrderedKinds(orderData)
-        kinds.removeAll { $0 == dragged }
-        guard let targetIdx = kinds.firstIndex(of: target) else { return }
-        kinds.insert(dragged, at: targetIdx)
+        kinds.move(fromOffsets: source, toOffset: destination)
         orderData = lumaEncodeSmartOrder(kinds)
     }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
+            List {
+                Section {
                     Toggle(isOn: $enabled) {
                         Text("Smart-Playlists anzeigen").foregroundStyle(.white)
                     }
                     .tint(Color.lumaToggle)
-                    .padding(.horizontal, 20)
-                    .frame(minHeight: 52)
-                    .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                    .padding(.horizontal, 16)
+                    .listRowBackground(Color.lumaSurface)
+                }
 
-                    if enabled {
-                        Text(String(localized: "Sichtbare Listen").uppercased())
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.4))
-                            .padding(.horizontal, 20)
-                            .padding(.top, 24)
-                            .padding(.bottom, 8)
-
-                        let kinds = lumaSmartOrderedKinds(orderData)
-                        VStack(spacing: 0) {
-                            ForEach(Array(kinds.enumerated()), id: \.element) { index, kind in
-                                Toggle(isOn: binding(for: kind)) {
-                                    HStack(spacing: 12) {
-                                        Image(systemName: "line.3.horizontal")
-                                            .font(.system(size: 13))
-                                            .foregroundStyle(.white.opacity(0.28))
-                                        Image(systemName: kind.systemImage)
-                                            .font(.system(size: 14))
-                                            .foregroundStyle(.white.opacity(0.7))
-                                            .frame(width: 24)
-                                        Text(kind.title).foregroundStyle(.white)
-                                    }
+                if enabled {
+                    Section {
+                        // Native List reorder (same as the Queue): the rows shift and you can
+                        // grab a whole row to move it. The Toggle switch stays tappable.
+                        ForEach(lumaSmartOrderedKinds(orderData), id: \.self) { kind in
+                            Toggle(isOn: binding(for: kind)) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: kind.systemImage)
+                                        .font(.system(size: 14))
+                                        .foregroundStyle(.white.opacity(0.7))
+                                        .frame(width: 24)
+                                    Text(kind.title).foregroundStyle(.white)
                                 }
-                                .tint(Color.lumaToggle)
-                                .padding(.horizontal, 20)
-                                .frame(minHeight: 50)
-                                .contentShape(Rectangle())
-                                .draggable(kind.rawValue)
-                                .dropDestination(for: String.self) { items, _ in
-                                    guard let raw = items.first, let dragged = SmartSectionKind(rawValue: raw) else { return false }
-                                    reorder(moving: dragged, to: kind)
-                                    return true
-                                }
-                                if index < kinds.count - 1 { LumaSeparator(leadingPad: 20) }
                             }
+                            .tint(Color.lumaToggle)
+                            .listRowBackground(Color.lumaSurface)
                         }
-                        .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        .padding(.horizontal, 16)
-
-                        Text("Halte eine Liste gedrückt und ziehe sie, um die Reihenfolge zu ändern.")
-                            .font(.caption)
+                        .onMove(perform: move)
+                    } header: {
+                        Text("Sichtbare Listen").foregroundStyle(.white.opacity(0.45))
+                    } footer: {
+                        Text("Ziehe eine Liste am Griff, um die Reihenfolge zu ändern.")
                             .foregroundStyle(.white.opacity(0.35))
-                            .padding(.horizontal, 20)
-                            .padding(.top, 8)
                     }
                 }
-                .padding(.top, 12)
             }
+            .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(Color.lumaBackground.ignoresSafeArea())
+            #if os(iOS) || os(visionOS)
+            // Always-on edit mode so the reorder grips show (matches the Queue); macOS reorders
+            // via .onMove without it.
+            .environment(\.editMode, .constant(.active))
+            #endif
             .navigationTitle("Smart-Playlists")
             .lumaInlineNavTitle()
             .toolbar {
