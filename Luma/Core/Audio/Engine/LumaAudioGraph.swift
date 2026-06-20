@@ -97,6 +97,13 @@ final class LumaAudioGraph {
         engine.stop()
     }
 
+    /// Pause the engine (vs `stop()`) so the graph, connections and scheduled buffers survive
+    /// — used when backgrounding while paused so the OS sees an idle render pipeline. `start()`
+    /// restarts it and the player node resumes from its paused frame (gapless).
+    func pause() {
+        engine.pause()
+    }
+
     /// Gain of a player node (0...1), used for crossfade ramps and the sleep-timer fade.
     func setVolume(_ volume: Float, on node: AVAudioPlayerNode) {
         node.volume = max(0, min(1, volume))

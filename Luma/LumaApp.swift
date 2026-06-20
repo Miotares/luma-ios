@@ -60,6 +60,13 @@ struct LumaApp: App {
                     // Persist the play head whenever we leave the foreground, so a
                     // background-kill still resumes where the user left off.
                     if phase != .active { container.savePlaybackState() }
+                    // On iOS, release the audio session when backgrounding-while-paused so the
+                    // lock screen reflects "paused" (iOS reads the session, not playbackState).
+                    switch phase {
+                    case .background: container.enterBackground()
+                    case .active:     container.enterForeground()
+                    default:          break
+                    }
                 }
         }
         #if os(macOS)

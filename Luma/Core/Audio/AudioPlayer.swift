@@ -223,6 +223,25 @@ final class AudioPlayer {
         nowPlayingUpdate()
     }
 
+    /// Called when the app leaves the foreground. iOS infers the lock-screen play/pause state
+    /// from whether the AVAudioSession is ACTIVE (MPNowPlayingInfoCenter.playbackState is a
+    /// macOS-only no-op). So if we're paused, fully release the audio — pause the engine, then
+    /// deactivate the session — otherwise iOS sees a live session in the background and shows
+    /// "playing". No-op while playing: that's normal background audio and must keep running.
+    /// `resume()` re-activates + restarts the engine, so it works unchanged afterwards.
+    func enterBackground() {
+        #if os(iOS) || os(visionOS)
+        guard state == .paused else { return }
+        engineGraph.pause()      // MUST precede deactivate() or the session throws "is busy"
+        session.deactivate()
+        #endif
+    }
+
+    /// Returning to the foreground — refresh the now-playing info so the scrubber is fresh.
+    func enterForeground() {
+        nowPlayingUpdate()
+    }
+
     func stop() {
         flushListen()
         cancelSleepTimer()

@@ -98,6 +98,13 @@ final class AppContainer {
         PlaybackStateStore.save(queue: queue, position: player.currentTime)
     }
 
+    /// App left the foreground — let the player release the audio session if it's paused, so
+    /// the lock screen reports the correct paused state.
+    func enterBackground() { player.enterBackground() }
+
+    /// App returned to the foreground — refresh the now-playing info.
+    func enterForeground() { player.enterForeground() }
+
     /// Restores the last session's queue and parks the player paused at the saved position.
     /// No-op when nothing is saved or the referenced tracks are gone.
     func restoreLastSession() {
