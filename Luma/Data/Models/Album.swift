@@ -8,8 +8,10 @@ final class Album {
     var artistName: String
     var year: Int?
     var genre: String?
-    // Thumbnail stored in model for list display; full artwork lives in ArtworkCache.
-    var artworkData: Data?
+    // Cover art bytes. `.externalStorage` keeps the (multi-MB) blob OUT of the SQLite row,
+    // so materializing an Album / running an @Query<Album> doesn't fault the image off disk —
+    // it's only read when artworkData is actually accessed.
+    @Attribute(.externalStorage) var artworkData: Data?
 
     @Relationship(deleteRule: .nullify)
     var tracks: [Track]

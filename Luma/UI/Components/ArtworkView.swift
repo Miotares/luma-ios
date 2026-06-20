@@ -48,9 +48,18 @@ struct ArtworkView: View {
         .frame(width: size, height: size)
         .clipped()
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        // Reload when the data changes (e.g. the mini-player on a track switch). loadImage
-        // hits the cache first, so a known cover swaps instantly.
-        .task(id: data) { image = await Self.loadImage(from: data, cacheKey: cacheKey) }
+        // Reload when the cover changes (e.g. the mini-player on a track switch). Keyed on the
+        // cheap cacheKey (the id) when given, else the byte COUNT — never the raw Data, whose
+        // Equatable diff is O(bytes) and ran on every body re-eval. loadImage hits the cache
+        // first, so a known cover swaps instantly.
+        .task(id: taskID) { image = await Self.loadImage(from: data, cacheKey: cacheKey) }
+    }
+
+    /// Stable, cheap identity for `.task` — the id when supplied, otherwise a byte-count proxy.
+    private var taskID: String? {
+        if let cacheKey { return cacheKey }
+        guard let data else { return nil }
+        return "n\(data.count)"
     }
 
     private var placeholder: some View {

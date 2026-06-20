@@ -110,7 +110,7 @@ struct PlayerView: View {
             Spacer(minLength: 28)
 
             // Artwork — responsive, scales with play state
-            ArtworkView(data: track.album?.artworkData, cornerRadius: 22, size: nil)
+            ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 22, size: nil)
                 .aspectRatio(1, contentMode: .fit)
                 .padding(.horizontal, 28)
                 .shadow(color: .black.opacity(0.75), radius: 45, y: 36)

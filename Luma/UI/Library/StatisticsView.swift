@@ -140,7 +140,7 @@ struct StatisticsView: View {
                     .foregroundStyle(rank <= 3 ? .white : Color.white.opacity(0.4))
                     .frame(width: 24, alignment: .center)
 
-                ArtworkView(data: track.album?.artworkData, cornerRadius: 6, size: 44)
+                ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 6, size: 44)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.title)
@@ -175,7 +175,7 @@ struct StatisticsView: View {
                     .foregroundStyle(rank <= 3 ? .white : Color.white.opacity(0.4))
                     .frame(width: 24, alignment: .center)
 
-                ArtworkView(data: artistArtwork(artist), cornerRadius: 22, size: 44)
+                ArtworkView(data: artistArtwork(artist), cacheKey: artist.id.uuidString, cornerRadius: 22, size: 44)
 
                 Text(artist.name)
                     .font(.system(size: 16))

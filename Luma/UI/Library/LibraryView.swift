@@ -517,7 +517,7 @@ struct ArtistListRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ArtworkView(data: artist.sortedAlbums.first?.artworkData, cornerRadius: 26, size: 52)
+            ArtworkView(data: artist.sortedAlbums.first?.artworkData, cacheKey: artist.sortedAlbums.first?.id.uuidString, cornerRadius: 26, size: 52)
             VStack(alignment: .leading, spacing: 4) {
                 Text(artist.name).font(.body.weight(.semibold)).foregroundStyle(.white)
                 let a = artist.albumCount, t = artist.trackCount

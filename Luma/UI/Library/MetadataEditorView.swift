@@ -16,7 +16,7 @@ struct MetadataEditorView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    ArtworkView(data: track.album?.artworkData, cornerRadius: 14, size: 120)
+                    ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 14, size: 120)
                         .shadow(color: .black.opacity(0.5), radius: 16, y: 8)
                         .padding(.top, 8)
 

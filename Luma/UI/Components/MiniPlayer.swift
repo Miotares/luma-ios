@@ -21,7 +21,7 @@ struct MiniPlayer: View {
                 // controls are OUTSIDE this tap region, so they no longer compete
                 // with the open-gesture (which made them feel laggy/mushy).
                 HStack(spacing: 12) {
-                    ArtworkView(data: track.album?.artworkData, cornerRadius: 8, size: 44)
+                    ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 8, size: 44)
                         .shadow(color: .black.opacity(0.3), radius: 5, y: 2)
 
                     VStack(alignment: .leading, spacing: 2) {

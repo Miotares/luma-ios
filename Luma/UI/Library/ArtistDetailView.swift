@@ -122,7 +122,7 @@ struct ArtistDetailView: View {
 
     private func albumNavRow(_ album: Album) -> some View {
         HStack(spacing: 14) {
-            ArtworkView(data: album.artworkData, cornerRadius: 8, size: 56)
+            ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 8, size: 56)
             VStack(alignment: .leading, spacing: 4) {
                 Text(album.title)
                     .font(.system(size: 18, weight: .bold))
@@ -169,18 +169,18 @@ private struct ArtistArtworkView: View {
                 let half = (geo.size.width - 2) / 2
                 VStack(spacing: 2) {
                     HStack(spacing: 2) {
-                        ArtworkView(data: albums[0].artworkData, cornerRadius: 0, size: half)
-                        ArtworkView(data: albums[1].artworkData, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[0].artworkData, cacheKey: albums[0].id.uuidString, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[1].artworkData, cacheKey: albums[1].id.uuidString, cornerRadius: 0, size: half)
                     }
                     HStack(spacing: 2) {
-                        ArtworkView(data: albums[2].artworkData, cornerRadius: 0, size: half)
-                        ArtworkView(data: albums[3].artworkData, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[2].artworkData, cacheKey: albums[2].id.uuidString, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[3].artworkData, cacheKey: albums[3].id.uuidString, cornerRadius: 0, size: half)
                     }
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         } else {
-            ArtworkView(data: albums.first?.artworkData, cornerRadius: 16, size: nil)
+            ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.id.uuidString, cornerRadius: 16, size: nil)
                 .aspectRatio(1, contentMode: .fit)
         }
     }
