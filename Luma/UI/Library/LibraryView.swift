@@ -111,6 +111,12 @@ struct LibraryView: View {
         .onChange(of: resetSignal) { _, _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.7)) { filter = .albums }
         }
+        // Resort the Songs list off-main whenever the library actually changes (add/remove/
+        // retag — not playback stats, which keep the same id-order). Runs here at the root so
+        // it isn't redone on every visit to the Songs tab.
+        .task(id: allTracks) {
+            sortedSongs = await Self.sortSongsAsync(allTracks)
+        }
     }
 
     // MARK: - Custom Header
@@ -376,6 +382,10 @@ struct LibraryView: View {
                     emptyHint(icon: "music.note", text: "Keine Songs", sub: "Importiere Musik um Songs zu sehen.")
                         .padding(.top, 60)
                 }
+            } else if sortedSongs.isEmpty {
+                // The (large) table is being sorted off-main — show progress, not a frozen tab.
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
                     PlayShuffleHeader(tracks: sortedSongs)
@@ -397,31 +407,42 @@ struct LibraryView: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .lumaScrollClearance(playerActive: app.player.state.isActive, top: 20)
-                .onChange(of: allTracks, initial: true) { _, tracks in
-                    sortedSongs = Self.sortSongs(tracks)
-                }
             }
         }
     }
 
-    /// Flat list: album tracks stay contiguous and in track-number order, but with
-    /// no album section headers — just one continuous list. Computed off `allTracks` only
-    /// when it changes (see the `@State sortedSongs` cache), not on every render.
-    private static func sortSongs(_ tracks: [Track]) -> [Track] {
-        tracks.sorted { a, b in
-            // Use Track's denormalized columns, NOT a.album?.… — dereferencing the Album
-            // relationship per comparison faulted SwiftData across the whole library on
-            // every render, a major main-thread stall.
-            if a.albumTitle != b.albumTitle {
-                return a.albumTitle.localizedStandardCompare(b.albumTitle) == .orderedAscending
-            }
-            if a.artistName != b.artistName {
-                return a.artistName.localizedStandardCompare(b.artistName) == .orderedAscending
-            }
-            if a.discNumber != b.discNumber { return a.discNumber < b.discNumber }
-            if a.trackNumber != b.trackNumber { return a.trackNumber < b.trackNumber }
+    /// Lightweight, Sendable snapshot of the columns the Songs sort needs, so the expensive
+    /// locale-aware comparison can run OFF the main thread (Track is non-Sendable).
+    private struct SongSortKey: Sendable {
+        let id: PersistentIdentifier
+        let album: String, artist: String, title: String
+        let disc: Int, track: Int
+        // nonisolated so the comparator can run inside Task.detached (off the main actor).
+        nonisolated static func before(_ a: SongSortKey, _ b: SongSortKey) -> Bool {
+            if a.album != b.album { return a.album.localizedStandardCompare(b.album) == .orderedAscending }
+            if a.artist != b.artist { return a.artist.localizedStandardCompare(b.artist) == .orderedAscending }
+            if a.disc != b.disc { return a.disc < b.disc }
+            if a.track != b.track { return a.track < b.track }
             return a.title.localizedStandardCompare(b.title) == .orderedAscending
         }
+    }
+
+    /// Flat list: album tracks stay contiguous and in track-number order. The locale-aware
+    /// sort of the whole table (~thousands of `localizedStandardCompare`) is far too slow for
+    /// the main thread (it froze the tab for ~2s), so snapshot Sendable keys on main, sort
+    /// off-main, then map back to tracks on main.
+    @MainActor
+    private static func sortSongsAsync(_ tracks: [Track]) async -> [Track] {
+        guard !tracks.isEmpty else { return [] }
+        let keys = tracks.map {
+            SongSortKey(id: $0.persistentModelID, album: $0.albumTitle, artist: $0.artistName,
+                        title: $0.title, disc: $0.discNumber, track: $0.trackNumber)
+        }
+        let orderedIDs = await Task.detached(priority: .userInitiated) {
+            keys.sorted(by: SongSortKey.before).map(\.id)
+        }.value
+        let byID = Dictionary(tracks.map { ($0.persistentModelID, $0) }, uniquingKeysWith: { a, _ in a })
+        return orderedIDs.compactMap { byID[$0] }
     }
 
     private func playSong(_ track: Track) {
