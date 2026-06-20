@@ -11,6 +11,8 @@ final class ImportManager {
     private(set) var importedCount = 0
     private(set) var failedCount = 0
     var lastError: String?
+    /// Fired (main actor) after an import finishes, so playlists can re-link placeholders.
+    var onImportFinished: (() -> Void)?
 
     nonisolated static let supportedExtensions: Set<String> = ["mp3", "m4a", "flac", "aac", "wav", "aiff", "opus"]
 
@@ -145,6 +147,7 @@ final class ImportManager {
 
         try? modelContext.save()
         isImporting = false
+        onImportFinished?()
     }
 
     /// Recursively collects supported audio files within a folder.

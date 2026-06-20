@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct PlaylistDetailView: View {
     @Environment(AppContainer.self) private var app
@@ -15,6 +16,8 @@ struct PlaylistDetailView: View {
     @State private var isSelecting = false
     @State private var selection: Set<UUID> = []
     @State private var showingPlaylistPicker = false
+    @State private var showingExporter = false
+    @State private var exportDocument: PlaylistBackupDocument?
 
     /// (entry, track) pairs resolved through the track→entry inverse, so entries whose
     /// track was deleted are skipped instead of crashing on `entry.track`.
@@ -25,6 +28,29 @@ struct PlaylistDetailView: View {
             .compactMap { entry in map[entry.persistentModelID].map { (entry, $0) } }
     }
     private var tracks: [Track] { validPairs.map(\.track) }
+
+    /// Entries whose track isn't in the library (backup placeholders or a deleted track),
+    /// shown grayed at the bottom. Reads only denormalized metadata, never `entry.track`.
+    private var placeholderEntries: [PlaylistEntry] {
+        let map = validEntryTrackMap(allTracks)
+        return playlist.entries
+            .sorted { $0.order < $1.order }
+            .filter { map[$0.persistentModelID] == nil && !$0.trackTitle.isEmpty }
+    }
+    private var hasUnresolvedEntries: Bool {
+        let map = validEntryTrackMap(allTracks)
+        return playlist.entries.contains { map[$0.persistentModelID] == nil }
+    }
+
+    /// Sanitized suggested export filename — playlist names allow `/` and `:`, which
+    /// break a file name; fall back to a constant when the name is empty.
+    private var exportFilename: String {
+        let cleaned = playlist.name
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: ":", with: "-")
+            .trimmingCharacters(in: .whitespaces)
+        return cleaned.isEmpty ? "Playlist" : cleaned
+    }
 
     /// Duration of the VALID tracks only — `playlist.formattedDuration` would walk
     /// `sortedTracks` and crash on a dangling entry.
@@ -47,6 +73,22 @@ struct PlaylistDetailView: View {
                 }
                 .onMove(perform: moveTracks)
                 .onDelete(perform: deleteAction)
+
+                if !placeholderEntries.isEmpty {
+                    Text("Nicht in der Mediathek")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.4))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 20, leading: 18, bottom: 8, trailing: 16))
+                    ForEach(placeholderEntries) { entry in
+                        placeholderRow(entry)
+                            .frame(minHeight: 56)
+                            .listRowBackground(Color.clear)
+                            .trackRowSeparator()
+                            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                    }
+                }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -121,6 +163,8 @@ struct PlaylistDetailView: View {
         .sheet(isPresented: $showingPlaylistPicker) {
             PlaylistPickerSheet(onPick: addSelected(to:))
         }
+        .fileExporter(isPresented: $showingExporter, document: exportDocument,
+                      contentType: .json, defaultFilename: exportFilename) { _ in }
         .confirmationDialog("Playlist löschen?", isPresented: $showingDeleteConfirm, titleVisibility: .visible) {
             Button("Playlist löschen", role: .destructive) {
                 try? app.library.deletePlaylist(playlist)
@@ -160,6 +204,18 @@ struct PlaylistDetailView: View {
             isEditingName = true
         } label: {
             Label("Umbenennen", systemImage: "pencil")
+        }
+        Button {
+            exportThis()
+        } label: {
+            Label("Playlist exportieren", systemImage: "square.and.arrow.up")
+        }
+        if hasUnresolvedEntries {
+            Button {
+                try? app.library.removePlaceholders(from: playlist)
+            } label: {
+                Label("Leere Einträge entfernen", systemImage: "wand.and.sparkles")
+            }
         }
         Divider()
         Button(role: .destructive) {
@@ -433,5 +489,36 @@ struct PlaylistDetailView: View {
         let start = shuffle ? Int.random(in: 0..<tracks.count) : 0
         app.queue.setQueue(tracks, startAt: start, shuffle: shuffle)
         Task { await app.player.play(track: app.queue.currentTrack ?? tracks[0]) }
+    }
+
+    private func placeholderRow(_ entry: PlaylistEntry) -> some View {
+        HStack(spacing: 12) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(.white.opacity(0.05))
+                .frame(width: 44, height: 44)
+                .overlay {
+                    Image(systemName: "arrow.down.circle.dotted")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white.opacity(0.3))
+                }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(entry.trackTitle)
+                    .font(.system(size: 16))
+                    .foregroundStyle(.white.opacity(0.4))
+                    .lineLimit(1)
+                if !entry.trackArtist.isEmpty {
+                    Text(entry.trackArtist)
+                        .font(.system(size: 13))
+                        .foregroundStyle(.white.opacity(0.28))
+                        .lineLimit(1)
+                }
+            }
+            Spacer()
+        }
+    }
+
+    private func exportThis() {
+        exportDocument = PlaylistBackupDocument(data: app.library.makeBackupData(playlists: [playlist]) ?? Data())
+        showingExporter = true
     }
 }

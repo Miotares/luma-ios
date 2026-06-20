@@ -208,6 +208,139 @@ final class LibraryRepository {
         try context.save()
     }
 
+    // MARK: - Playlist Backup (export / import)
+
+    /// Match key for re-linking a backup entry to a library track: title+artist+album,
+    /// lowercased + trimmed.
+    private func matchKey(_ title: String, _ artist: String, _ album: String) -> String {
+        func n(_ s: String) -> String { s.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+        return n(title) + "\u{1}" + n(artist) + "\u{1}" + n(album)
+    }
+
+    /// Encodes playlists (all, or a given subset) to a backup JSON blob.
+    func makeBackupData(playlists: [Playlist]? = nil) -> Data? {
+        let lists = playlists ?? ((try? context.fetch(
+            FetchDescriptor<Playlist>(sortBy: [SortDescriptor(\.sortIndex)])
+        )) ?? [])
+        // Resolve duration/trackNumber through the track->entry inverse — never read e.track,
+        // which can fault on a legacy dangling entry (the no-entry.track invariant).
+        let allTracks = (try? context.fetch(FetchDescriptor<Track>())) ?? []
+        let map = validEntryTrackMap(allTracks)
+        let backup = PlaylistBackup(version: 1, playlists: lists.map { pl in
+            BackupPlaylist(name: pl.name, tracks: pl.entries.sorted { $0.order < $1.order }.map { e in
+                let track = map[e.persistentModelID]
+                return BackupTrack(
+                    title: e.trackTitle,
+                    artist: e.trackArtist,
+                    album: e.trackAlbum,
+                    duration: track?.duration,
+                    trackNumber: track?.trackNumber
+                )
+            })
+        })
+        return try? JSONEncoder().encode(backup)
+    }
+
+    /// Recreates playlists from a backup. Tracks already in the library are linked; the rest
+    /// become placeholders (re-linked later via relinkPlaylistPlaceholders).
+    @discardableResult
+    func importBackup(_ data: Data) throws -> (created: Int, matched: Int, placeholders: Int) {
+        let backup = try JSONDecoder().decode(PlaylistBackup.self, from: data)
+        let allTracks = (try? context.fetch(FetchDescriptor<Track>())) ?? []
+        var index: [String: Track] = [:]
+        for t in allTracks { index[matchKey(t.title, t.artistName, t.albumTitle)] = t }
+
+        let existing = (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
+        var existingNames = Set(existing.map { $0.name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) })
+        let minSort = existing.map(\.sortIndex).min() ?? 0
+        var created = 0, matched = 0, placeholders = 0
+
+        for bp in backup.playlists {
+            let trimmed = bp.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            let name = trimmed.isEmpty ? String(localized: "Playlist") : trimmed
+            // Skip playlists that already exist (re-import / populated library) — no duplicates.
+            guard existingNames.insert(name.lowercased()).inserted else { continue }
+            let playlist = Playlist(name: name)
+            playlist.sortIndex = minSort - 1 - created
+            created += 1
+            context.insert(playlist)
+            for (order, bt) in bp.tracks.enumerated() {
+                let entry: PlaylistEntry
+                if let match = index[matchKey(bt.title, bt.artist, bt.album)] {
+                    entry = PlaylistEntry(track: match, order: order)
+                    matched += 1
+                } else {
+                    entry = PlaylistEntry(placeholderTitle: bt.title, artist: bt.artist, album: bt.album, order: order)
+                    placeholders += 1
+                }
+                entry.playlist = playlist
+                playlist.entries.append(entry)
+                context.insert(entry)
+            }
+        }
+        try context.save()
+        return (backup.playlists.count, matched, placeholders)
+    }
+
+    /// Links placeholder entries to newly-available tracks. Called after a music import.
+    func relinkPlaylistPlaceholders() {
+        let allTracks = (try? context.fetch(FetchDescriptor<Track>())) ?? []
+        guard !allTracks.isEmpty else { return }
+        let validIDs = Set(allTracks.flatMap { $0.playlistEntries.map(\.persistentModelID) })
+        let entries = (try? context.fetch(FetchDescriptor<PlaylistEntry>())) ?? []
+        let placeholders = entries.filter { !validIDs.contains($0.persistentModelID) && !$0.trackTitle.isEmpty }
+        guard !placeholders.isEmpty else { return }
+
+        var index: [String: Track] = [:]
+        for t in allTracks { index[matchKey(t.title, t.artistName, t.albumTitle)] = t }
+        var changed = false
+        for entry in placeholders {
+            if let match = index[matchKey(entry.trackTitle, entry.trackArtist, entry.trackAlbum)] {
+                entry.track = match
+                changed = true
+            }
+        }
+        if changed { try? context.save() }
+    }
+
+    /// Removes unresolved (placeholder / dangling) entries from a playlist and re-indexes.
+    func removePlaceholders(from playlist: Playlist) throws {
+        let allTracks = (try? context.fetch(FetchDescriptor<Track>())) ?? []
+        let validIDs = Set(allTracks.flatMap { $0.playlistEntries.map(\.persistentModelID) })
+        // Snapshot before mutating — never remove from playlist.entries while iterating it.
+        let dead = playlist.entries.filter { !validIDs.contains($0.persistentModelID) }
+        for entry in dead {
+            playlist.entries.removeAll { $0.id == entry.id }
+            context.delete(entry)
+        }
+        for (i, e) in playlist.entries.sorted(by: { $0.order < $1.order }).enumerated() { e.order = i }
+        try context.save()
+    }
+
+    private static let didBackfillEntryMetaKey = "didBackfillEntryMeta_v1"
+
+    /// One-time backfill of denormalized entry metadata for playlists created before backups
+    /// existed, so a track later deleted becomes a proper placeholder instead of vanishing.
+    func backfillEntryMetadataIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: Self.didBackfillEntryMetaKey) else { return }
+        let allTracks = (try? context.fetch(FetchDescriptor<Track>())) ?? []
+        var trackByEntry: [PersistentIdentifier: Track] = [:]
+        for t in allTracks { for e in t.playlistEntries { trackByEntry[e.persistentModelID] = t } }
+        // Bail WITHOUT marking done so a transient fetch failure retries next launch.
+        guard let entries = try? context.fetch(FetchDescriptor<PlaylistEntry>()) else { return }
+        var changed = false
+        for e in entries where e.trackTitle.isEmpty {
+            if let t = trackByEntry[e.persistentModelID] {
+                e.trackTitle = t.title
+                e.trackArtist = t.artistName
+                e.trackAlbum = t.albumTitle
+                changed = true
+            }
+        }
+        if changed { try? context.save() }
+        UserDefaults.standard.set(true, forKey: Self.didBackfillEntryMetaKey)
+    }
+
     // MARK: - Album
 
     /// Edit album metadata. Reassigns the album (and its tracks) to a find-or-created

@@ -43,6 +43,11 @@ final class AppContainer {
         // Backfill playlist order (one-time) so existing playlists keep their order when
         // the Playlists tab switches to manual sorting.
         lib.seedPlaylistOrderIfNeeded()
+        // Backfill denormalized playlist-entry metadata (one-time) so backups/placeholders work.
+        lib.backfillEntryMetadataIfNeeded()
+
+        // After a music import, re-link any playlist placeholders to the new tracks.
+        importManager.onImportFinished = { [weak self] in self?.library.relinkPlaylistPlaceholders() }
 
         p.onTrackComplete = { track in
             try? lib.recordPlay(track: track)

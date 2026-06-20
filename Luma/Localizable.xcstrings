@@ -83,6 +83,16 @@
         }
       }
     },
+    "%lld Playlists importiert, %lld Titel noch nicht in der Mediathek.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld playlists imported, %lld tracks not in your library yet."
+          }
+        }
+      }
+    },
     "%lld Songs": {
       "localizations": {
         "de": {
@@ -119,6 +129,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "%lld Titel verknüpft, %lld noch nicht in der Mediathek.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld tracks linked, %lld not in your library yet."
           }
         }
       }
@@ -656,6 +676,16 @@
         }
       }
     },
+    "Diese Playlists sind bereits vorhanden.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These playlists already exist."
+          }
+        }
+      }
+    },
     "Einstellungen": {
       "localizations": {
         "en": {
@@ -886,6 +916,16 @@
         }
       }
     },
+    "Import fehlgeschlagen.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import failed."
+          }
+        }
+      }
+    },
     "Importiere Musik um Künstler zu sehen.": {
       "localizations": {
         "en": {
@@ -1077,6 +1117,16 @@
         }
       }
     },
+    "Leere Einträge entfernen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove Empty Entries"
+          }
+        }
+      }
+    },
     "Leeren": {
       "localizations": {
         "en": {
@@ -1248,6 +1298,16 @@
         }
       }
     },
+    "Nicht in der Mediathek": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not in Library"
+          }
+        }
+      }
+    },
     "Nichts weiteres in der Warteschlange": {
       "localizations": {
         "en": {
@@ -1355,12 +1415,32 @@
         }
       }
     },
+    "Playlist": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playlist"
+          }
+        }
+      }
+    },
     "Playlist Name": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Playlist Name"
+          }
+        }
+      }
+    },
+    "Playlist exportieren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export Playlist"
           }
         }
       }
@@ -1391,6 +1471,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Playlists"
+          }
+        }
+      }
+    },
+    "Playlists exportieren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export Playlists"
+          }
+        }
+      }
+    },
+    "Playlists importieren": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import Playlists"
+          }
+        }
+      }
+    },
+    "Playlists importiert": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playlists Imported"
           }
         }
       }

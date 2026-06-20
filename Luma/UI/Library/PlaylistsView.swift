@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 /// Maps every playlist entry that still has a VALID track to that track, walking the
 /// `track → playlistEntries` inverse. Resolving a playlist's tracks through this map
@@ -31,6 +32,11 @@ struct PlaylistsView: View {
     @State private var newPlaylistName = ""
     @State private var isReordering = false
     @AppStorage(SmartSectionKind.masterKey) private var smartPlaylistsEnabled = true
+    @State private var showingExporter = false
+    @State private var showingImporter = false
+    @State private var exportDocument: PlaylistBackupDocument?
+    @State private var showingImportResult = false
+    @State private var importMessage = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -51,6 +57,37 @@ struct PlaylistsView: View {
             }
             Button("Abbrechen", role: .cancel) { newPlaylistName = "" }
         }
+        .fileExporter(isPresented: $showingExporter, document: exportDocument,
+                      contentType: .json, defaultFilename: "Luma Playlists") { _ in }
+        .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.json]) { handleImport($0) }
+        .alert("Playlists importiert", isPresented: $showingImportResult) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importMessage)
+        }
+    }
+
+    private func exportAll() {
+        exportDocument = PlaylistBackupDocument(data: app.library.makeBackupData() ?? Data())
+        showingExporter = true
+    }
+
+    private func handleImport(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
+        let didAccess = url.startAccessingSecurityScopedResource()
+        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url),
+              let outcome = try? app.library.importBackup(data) else {
+            importMessage = String(localized: "Import fehlgeschlagen.")
+            showingImportResult = true
+            return
+        }
+        if outcome.created == 0 {
+            importMessage = String(localized: "Diese Playlists sind bereits vorhanden.")
+        } else {
+            importMessage = String(localized: "\(outcome.created) Playlists importiert, \(outcome.placeholders) Titel noch nicht in der Mediathek.")
+        }
+        showingImportResult = true
     }
 
     // MARK: - Header
@@ -87,6 +124,24 @@ struct PlaylistsView: View {
                     .buttonStyle(.plain)
                 }
                 #endif
+                Menu {
+                    Button { showingImporter = true } label: {
+                        Label("Playlists importieren", systemImage: "square.and.arrow.down")
+                    }
+                    if !playlists.isEmpty {
+                        Button { exportAll() } label: {
+                            Label("Playlists exportieren", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 38, height: 38)
+                        .contentShape(Rectangle())
+                        .glassEffect(.regular, in: .circle)
+                }
+                .menuIndicator(.hidden)
                 Button { showingCreate = true } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 17, weight: .semibold))
