@@ -11,7 +11,7 @@ enum SmartPlaylistKind: Hashable {
     case recentlyAdded
     case liked
     case genre(String)
-    case year(Int)
+    case decade(Int)   // decade start year, e.g. 1990 → "1990s"
 
     var title: String {
         switch self {
@@ -20,7 +20,7 @@ enum SmartPlaylistKind: Hashable {
         case .recentlyAdded:  return String(localized: "Zuletzt hinzugefügt")
         case .liked:          return String(localized: "Liked")
         case .genre(let g):   return g
-        case .year(let y):    return String(y)
+        case .decade(let d):  return lumaDecadeLabel(d)
         }
     }
 
@@ -31,7 +31,7 @@ enum SmartPlaylistKind: Hashable {
         case .recentlyAdded:  return "clock.badge.plus.fill"
         case .liked:          return "heart.fill"
         case .genre:          return "guitars.fill"
-        case .year:           return "calendar"
+        case .decade:         return "calendar"
         }
     }
 
@@ -75,66 +75,137 @@ enum SmartPlaylistKind: Hashable {
                 sortBy: [SortDescriptor(\.artistName), SortDescriptor(\.albumTitle),
                          SortDescriptor(\.discNumber), SortDescriptor(\.trackNumber)]
             )
-        case .year(let y):
-            let target: Int? = y
+        case .decade(let d):
+            let lo = d
+            let hi = d + 9
             return FetchDescriptor<Track>(
-                predicate: #Predicate { $0.year == target },
-                sortBy: [SortDescriptor(\.artistName), SortDescriptor(\.albumTitle),
-                         SortDescriptor(\.discNumber), SortDescriptor(\.trackNumber)]
+                predicate: #Predicate { ($0.year ?? -1) >= lo && ($0.year ?? -1) <= hi },
+                sortBy: [SortDescriptor(\.year), SortDescriptor(\.artistName),
+                         SortDescriptor(\.albumTitle), SortDescriptor(\.trackNumber)]
             )
         }
     }
 }
 
-/// Drill-down hubs (a list of genres / years), pushed from the smart section.
-enum SmartHub: Hashable { case genre, year }
+/// Decade label, e.g. 1990 → "1990er" (de) / "1990s" (en). Avoids a fiddly plural key.
+func lumaDecadeLabel(_ decade: Int) -> String {
+    let suffix = Locale.current.language.languageCode?.identifier == "de" ? "er" : "s"
+    return "\(decade)\(suffix)"
+}
+
+/// Drill-down hubs (a list of genres / decades), pushed from the smart section.
+enum SmartHub: Hashable { case genre, decade }
+
+// MARK: - Configurable section kinds + visibility
+
+/// The smart-list tiles the user can individually show/hide in Settings. Each maps to a
+/// destination (a SmartPlaylistKind list, or a genre/decade hub).
+enum SmartSectionKind: String, CaseIterable, Identifiable {
+    case mostPlayed, recentlyPlayed, recentlyAdded, liked, genre, decade
+
+    static let masterKey = "smartPlaylistsEnabled"
+
+    var id: String { rawValue }
+    var defaultsKey: String { "smartShow_" + rawValue }
+
+    var title: String {
+        switch self {
+        case .mostPlayed:     return String(localized: "Meistgespielt")
+        case .recentlyPlayed: return String(localized: "Zuletzt gespielt")
+        case .recentlyAdded:  return String(localized: "Zuletzt hinzugefügt")
+        case .liked:          return String(localized: "Liked")
+        case .genre:          return String(localized: "Nach Genre")
+        case .decade:         return String(localized: "Nach Jahrzehnt")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .mostPlayed:     return "flame.fill"
+        case .recentlyPlayed: return "clock.arrow.circlepath"
+        case .recentlyAdded:  return "clock.badge.plus.fill"
+        case .liked:          return "heart.fill"
+        case .genre:          return "guitars.fill"
+        case .decade:         return "calendar"
+        }
+    }
+}
 
 // MARK: - Smart Playlists Section (Playlists tab)
 
-/// Horizontal rail of smart-list tiles shown above the user's own playlists. Genre/Year
-/// tiles are gated on whether any track actually carries that metadata (flags passed in
-/// from the parent, which already holds the tracks @Query — no extra fetch here).
+/// Horizontal rail of smart-list tiles above the user's own playlists. Each tile is gated
+/// on its per-kind visibility setting; genre/decade tiles also require that metadata to
+/// exist (flags from the parent, which already holds the tracks @Query). The whole section
+/// is hidden by the parent when the master switch is off.
 struct SmartPlaylistsSection: View {
     let hasGenres: Bool
     let hasYears: Bool
 
-    private var fixedKinds: [SmartPlaylistKind] {
-        [.mostPlayed, .recentlyPlayed, .recentlyAdded, .liked]
+    @AppStorage("smartShow_mostPlayed")     private var showMostPlayed = true
+    @AppStorage("smartShow_recentlyPlayed") private var showRecentlyPlayed = true
+    @AppStorage("smartShow_recentlyAdded")  private var showRecentlyAdded = true
+    @AppStorage("smartShow_liked")          private var showLiked = true
+    @AppStorage("smartShow_genre")          private var showGenre = true
+    @AppStorage("smartShow_decade")         private var showDecade = true
+
+    private func isOn(_ k: SmartSectionKind) -> Bool {
+        switch k {
+        case .mostPlayed:     return showMostPlayed
+        case .recentlyPlayed: return showRecentlyPlayed
+        case .recentlyAdded:  return showRecentlyAdded
+        case .liked:          return showLiked
+        case .genre:          return showGenre
+        case .decade:         return showDecade
+        }
+    }
+
+    private var visibleKinds: [SmartSectionKind] {
+        SmartSectionKind.allCases.filter { k in
+            guard isOn(k) else { return false }
+            switch k {
+            case .genre:  return hasGenres
+            case .decade: return hasYears
+            default:      return true
+            }
+        }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Smart-Playlists")
-                .font(.system(size: 20, weight: .bold))
-                .tracking(-0.35)
-                .foregroundStyle(.white)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 12)
+        let kinds = visibleKinds
+        if kinds.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Smart-Playlists")
+                    .font(.system(size: 20, weight: .bold))
+                    .tracking(-0.35)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
-                    ForEach(fixedKinds, id: \.self) { kind in
-                        NavigationLink(value: kind) {
-                            SmartPlaylistTile(title: kind.title, systemImage: kind.systemImage)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 14) {
+                        ForEach(kinds) { kind in
+                            tile(for: kind)
                         }
-                        .buttonStyle(.plain)
                     }
-                    if hasGenres {
-                        NavigationLink(value: SmartHub.genre) {
-                            SmartPlaylistTile(title: String(localized: "Nach Genre"), systemImage: "guitars.fill")
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    if hasYears {
-                        NavigationLink(value: SmartHub.year) {
-                            SmartPlaylistTile(title: String(localized: "Nach Jahr"), systemImage: "calendar")
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 4)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 4)
             }
+        }
+    }
+
+    @ViewBuilder
+    private func tile(for k: SmartSectionKind) -> some View {
+        let label = SmartPlaylistTile(title: k.title, systemImage: k.systemImage)
+        switch k {
+        case .mostPlayed:     NavigationLink(value: SmartPlaylistKind.mostPlayed) { label }.buttonStyle(.plain)
+        case .recentlyPlayed: NavigationLink(value: SmartPlaylistKind.recentlyPlayed) { label }.buttonStyle(.plain)
+        case .recentlyAdded:  NavigationLink(value: SmartPlaylistKind.recentlyAdded) { label }.buttonStyle(.plain)
+        case .liked:          NavigationLink(value: SmartPlaylistKind.liked) { label }.buttonStyle(.plain)
+        case .genre:          NavigationLink(value: SmartHub.genre) { label }.buttonStyle(.plain)
+        case .decade:         NavigationLink(value: SmartHub.decade) { label }.buttonStyle(.plain)
         }
     }
 }
@@ -168,6 +239,92 @@ private struct SmartPlaylistTile: View {
     }
 }
 
+// MARK: - Smart Playlist Settings
+
+/// Sheet: master switch for the smart section + a toggle per list.
+struct SmartPlaylistSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @AppStorage(SmartSectionKind.masterKey) private var enabled = true
+    @AppStorage("smartShow_mostPlayed")     private var showMostPlayed = true
+    @AppStorage("smartShow_recentlyPlayed") private var showRecentlyPlayed = true
+    @AppStorage("smartShow_recentlyAdded")  private var showRecentlyAdded = true
+    @AppStorage("smartShow_liked")          private var showLiked = true
+    @AppStorage("smartShow_genre")          private var showGenre = true
+    @AppStorage("smartShow_decade")         private var showDecade = true
+
+    private func binding(for k: SmartSectionKind) -> Binding<Bool> {
+        switch k {
+        case .mostPlayed:     return $showMostPlayed
+        case .recentlyPlayed: return $showRecentlyPlayed
+        case .recentlyAdded:  return $showRecentlyAdded
+        case .liked:          return $showLiked
+        case .genre:          return $showGenre
+        case .decade:         return $showDecade
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Toggle(isOn: $enabled) {
+                        Text("Smart-Playlists anzeigen").foregroundStyle(.white)
+                    }
+                    .tint(Color.lumaToggle)
+                    .padding(.horizontal, 20)
+                    .frame(minHeight: 52)
+                    .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.horizontal, 16)
+
+                    if enabled {
+                        Text(String(localized: "Sichtbare Listen").uppercased())
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.4))
+                            .padding(.horizontal, 20)
+                            .padding(.top, 24)
+                            .padding(.bottom, 8)
+
+                        VStack(spacing: 0) {
+                            ForEach(Array(SmartSectionKind.allCases.enumerated()), id: \.element) { index, kind in
+                                Toggle(isOn: binding(for: kind)) {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: kind.systemImage)
+                                            .font(.system(size: 14))
+                                            .foregroundStyle(.white.opacity(0.7))
+                                            .frame(width: 24)
+                                        Text(kind.title).foregroundStyle(.white)
+                                    }
+                                }
+                                .tint(Color.lumaToggle)
+                                .padding(.horizontal, 20)
+                                .frame(minHeight: 50)
+                                if index < SmartSectionKind.allCases.count - 1 {
+                                    LumaSeparator(leadingPad: 20)
+                                }
+                            }
+                        }
+                        .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .padding(.horizontal, 16)
+                    }
+                }
+                .padding(.top, 12)
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.lumaBackground.ignoresSafeArea())
+            .navigationTitle("Smart-Playlists")
+            .lumaInlineNavTitle()
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Fertig") { dismiss() }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+        .presentationDetents([.medium, .large])
+    }
+}
+
 // MARK: - Smart Playlist Detail
 
 /// Read-only track list for a smart playlist. Mirrors LikedSongsView's list, with a
@@ -194,7 +351,7 @@ struct SmartPlaylistDetailView: View {
                     header
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 70, leading: 20, bottom: 6, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: 116, leading: 20, bottom: 6, trailing: 20))
                     PlayShuffleHeader(tracks: tracks)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -260,7 +417,7 @@ struct SmartPlaylistDetailView: View {
                 .foregroundStyle(.white.opacity(0.25))
                 .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.horizontal, 40)
     }
 
@@ -271,9 +428,9 @@ struct SmartPlaylistDetailView: View {
     }
 }
 
-// MARK: - Genre / Year Hub
+// MARK: - Genre / Decade Hub
 
-/// Lists the distinct genres (or years) in the library, each linking to its smart list.
+/// Lists the distinct genres (or decades) in the library, each linking to its smart list.
 struct SmartHubView: View {
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
@@ -297,14 +454,14 @@ struct SmartHubView: View {
             }
             return counts.keys.sorted(by: lumaTitleBefore)
                 .map { HubEntry(title: $0, kind: .genre($0), count: counts[$0] ?? 0) }
-        case .year:
+        case .decade:
             var counts: [Int: Int] = [:]
             for t in allTracks {
                 guard let y = t.year else { continue }
-                counts[y, default: 0] += 1
+                counts[(y / 10) * 10, default: 0] += 1
             }
             return counts.keys.sorted(by: >)
-                .map { HubEntry(title: String($0), kind: .year($0), count: counts[$0] ?? 0) }
+                .map { HubEntry(title: lumaDecadeLabel($0), kind: .decade($0), count: counts[$0] ?? 0) }
         }
     }
 
@@ -343,7 +500,7 @@ struct SmartHubView: View {
             HStack {
                 LumaBackButton { dismiss() }
                 Spacer()
-                Text(hub == .genre ? "Nach Genre" : "Nach Jahr")
+                Text(hub == .genre ? "Nach Genre" : "Nach Jahrzehnt")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
                 Spacer()

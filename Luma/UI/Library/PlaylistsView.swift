@@ -30,6 +30,7 @@ struct PlaylistsView: View {
     @State private var showingCreate = false
     @State private var newPlaylistName = ""
     @State private var isReordering = false
+    @AppStorage(SmartSectionKind.masterKey) private var smartPlaylistsEnabled = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -119,8 +120,10 @@ struct PlaylistsView: View {
             let map = validEntryTrackMap(allTracks)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    SmartPlaylistsSection(hasGenres: hasGenres, hasYears: hasYears)
-                        .padding(.top, 8)
+                    if smartPlaylistsEnabled {
+                        SmartPlaylistsSection(hasGenres: hasGenres, hasYears: hasYears)
+                            .padding(.top, 8)
+                    }
 
                     Text("Deine Playlists")
                         .font(.system(size: 20, weight: .bold))

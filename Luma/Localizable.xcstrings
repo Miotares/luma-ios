@@ -1,6 +1,21 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
+    "Nach Jahrzehnt" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "By Decade" } }
+      }
+    },
+    "Sichtbare Listen" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Visible Lists" } }
+      }
+    },
+    "Smart-Playlists anzeigen" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Show Smart Playlists" } }
+      }
+    },
     "Zurücksetzen" : {
       "localizations" : {
         "en" : {
