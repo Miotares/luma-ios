@@ -131,6 +131,19 @@ enum SmartSectionKind: String, CaseIterable, Identifiable {
     }
 }
 
+/// The smart-section kinds in the user's manual order (Settings drag-to-reorder), with any
+/// newly added kinds appended in their default position.
+func lumaSmartOrderedKinds(_ orderData: Data) -> [SmartSectionKind] {
+    let raws = (try? JSONDecoder().decode([String].self, from: orderData)) ?? []
+    var result = raws.compactMap(SmartSectionKind.init(rawValue:))
+    for kind in SmartSectionKind.allCases where !result.contains(kind) { result.append(kind) }
+    return result
+}
+
+func lumaEncodeSmartOrder(_ kinds: [SmartSectionKind]) -> Data {
+    (try? JSONEncoder().encode(kinds.map(\.rawValue))) ?? Data()
+}
+
 // MARK: - Smart Playlists Section (Playlists tab)
 
 /// Horizontal rail of smart-list tiles above the user's own playlists. Each tile is gated
@@ -147,6 +160,7 @@ struct SmartPlaylistsSection: View {
     @AppStorage("smartShow_liked")          private var showLiked = true
     @AppStorage("smartShow_genre")          private var showGenre = true
     @AppStorage("smartShow_decade")         private var showDecade = true
+    @AppStorage("smartOrder")               private var orderData = Data()
 
     private func isOn(_ k: SmartSectionKind) -> Bool {
         switch k {
@@ -160,7 +174,7 @@ struct SmartPlaylistsSection: View {
     }
 
     private var visibleKinds: [SmartSectionKind] {
-        SmartSectionKind.allCases.filter { k in
+        lumaSmartOrderedKinds(orderData).filter { k in
             guard isOn(k) else { return false }
             switch k {
             case .genre:  return hasGenres
@@ -252,6 +266,7 @@ struct SmartPlaylistSettingsView: View {
     @AppStorage("smartShow_liked")          private var showLiked = true
     @AppStorage("smartShow_genre")          private var showGenre = true
     @AppStorage("smartShow_decade")         private var showDecade = true
+    @AppStorage("smartOrder")               private var orderData = Data()
 
     private func binding(for k: SmartSectionKind) -> Binding<Bool> {
         switch k {
@@ -262,6 +277,16 @@ struct SmartPlaylistSettingsView: View {
         case .genre:          return $showGenre
         case .decade:         return $showDecade
         }
+    }
+
+    /// Drop `dragged` just before `target` and persist the new order.
+    private func reorder(moving dragged: SmartSectionKind, to target: SmartSectionKind) {
+        guard dragged != target else { return }
+        var kinds = lumaSmartOrderedKinds(orderData)
+        kinds.removeAll { $0 == dragged }
+        guard let targetIdx = kinds.firstIndex(of: target) else { return }
+        kinds.insert(dragged, at: targetIdx)
+        orderData = lumaEncodeSmartOrder(kinds)
     }
 
     var body: some View {
@@ -285,10 +310,14 @@ struct SmartPlaylistSettingsView: View {
                             .padding(.top, 24)
                             .padding(.bottom, 8)
 
+                        let kinds = lumaSmartOrderedKinds(orderData)
                         VStack(spacing: 0) {
-                            ForEach(Array(SmartSectionKind.allCases.enumerated()), id: \.element) { index, kind in
+                            ForEach(Array(kinds.enumerated()), id: \.element) { index, kind in
                                 Toggle(isOn: binding(for: kind)) {
                                     HStack(spacing: 12) {
+                                        Image(systemName: "line.3.horizontal")
+                                            .font(.system(size: 13))
+                                            .foregroundStyle(.white.opacity(0.28))
                                         Image(systemName: kind.systemImage)
                                             .font(.system(size: 14))
                                             .foregroundStyle(.white.opacity(0.7))
@@ -299,13 +328,24 @@ struct SmartPlaylistSettingsView: View {
                                 .tint(Color.lumaToggle)
                                 .padding(.horizontal, 20)
                                 .frame(minHeight: 50)
-                                if index < SmartSectionKind.allCases.count - 1 {
-                                    LumaSeparator(leadingPad: 20)
+                                .contentShape(Rectangle())
+                                .draggable(kind.rawValue)
+                                .dropDestination(for: String.self) { items, _ in
+                                    guard let raw = items.first, let dragged = SmartSectionKind(rawValue: raw) else { return false }
+                                    reorder(moving: dragged, to: kind)
+                                    return true
                                 }
+                                if index < kinds.count - 1 { LumaSeparator(leadingPad: 20) }
                             }
                         }
                         .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .padding(.horizontal, 16)
+
+                        Text("Halte eine Liste gedrückt und ziehe sie, um die Reihenfolge zu ändern.")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.35))
+                            .padding(.horizontal, 20)
+                            .padding(.top, 8)
                     }
                 }
                 .padding(.top, 12)

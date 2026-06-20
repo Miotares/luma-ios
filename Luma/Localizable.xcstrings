@@ -816,6 +816,16 @@
         }
       }
     },
+    "Halte eine Liste gedrückt und ziehe sie, um die Reihenfolge zu ändern.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Touch and hold a list, then drag to reorder."
+          }
+        }
+      }
+    },
     "Hell": {
       "localizations": {
         "en": {
