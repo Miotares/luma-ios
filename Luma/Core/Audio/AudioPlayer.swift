@@ -16,7 +16,12 @@ import Observation
 final class AudioPlayer {
     // MARK: - Public State (observed by UI)
 
-    private(set) var currentTrack: Track?
+    private(set) var currentTrack: Track? {
+        didSet { currentTrackID = currentTrack?.id }
+    }
+    /// Stable id of the current track, captured when it is set so it stays readable even
+    /// after the Track is deleted from the store (used to tear down playback on delete).
+    private(set) var currentTrackID: UUID?
     private(set) var state: PlaybackState = .stopped
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0

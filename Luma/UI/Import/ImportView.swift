@@ -84,6 +84,14 @@ struct ImportView: View {
             ) { result in
                 handleFilePicker(result)
             }
+            // Auto-close once an import finishes cleanly; stay open on failure so the
+            // error stays visible.
+            .onChange(of: app.importManager.isImporting) { wasImporting, isImporting in
+                guard wasImporting, !isImporting,
+                      app.importManager.failedCount == 0,
+                      app.importManager.lastError == nil else { return }
+                dismiss()
+            }
         }
     }
 

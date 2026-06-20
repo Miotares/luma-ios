@@ -165,8 +165,9 @@ struct PlaylistDetailView: View {
         }
         .fileExporter(isPresented: $showingExporter, document: exportDocument,
                       contentType: .json, defaultFilename: exportFilename) { _ in }
-        .confirmationDialog("Playlist löschen?", isPresented: $showingDeleteConfirm, titleVisibility: .visible) {
-            Button("Playlist löschen", role: .destructive) {
+        .alert("Playlist löschen?", isPresented: $showingDeleteConfirm) {
+            Button("Abbrechen", role: .cancel) {}
+            Button("Löschen", role: .destructive) {
                 try? app.library.deletePlaylist(playlist)
                 dismiss()
             }

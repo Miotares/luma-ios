@@ -49,6 +49,20 @@ final class AppContainer {
         // After a music import, re-link any playlist placeholders to the new tracks.
         importManager.onImportFinished = { [weak self] in self?.library.relinkPlaylistPlaceholders() }
 
+        // When a track is deleted: if it was playing, tear down playback so the mini-player
+        // closes; otherwise just drop it from the queue. Keeps a deleted (dangling) Track
+        // from lingering in the queue.
+        lib.onTrackDeleted = { [weak self] id in
+            guard let self else { return }
+            if self.player.currentTrackID == id {
+                self.queue.clear()
+                self.player.stop()          // clears currentTrack → mini-player closes; persists empty queue
+            } else {
+                self.queue.removeTrack(id: id)
+                self.savePlaybackState()    // persist the trimmed queue
+            }
+        }
+
         p.onTrackComplete = { track in
             try? lib.recordPlay(track: track)
         }

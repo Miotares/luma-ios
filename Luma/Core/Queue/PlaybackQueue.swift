@@ -88,6 +88,22 @@ final class PlaybackQueue {
         currentIndex = -1
     }
 
+    /// Drops a track that was just deleted from the library, keeping the current track
+    /// stable. Returns true if the removed track was the one currently playing.
+    @discardableResult
+    func removeTrack(id: UUID) -> Bool {
+        let wasCurrent = currentTrack?.id == id
+        let keepID = wasCurrent ? nil : currentTrack?.id
+        items.removeAll { $0.id == id }
+        originalOrder.removeAll { $0.id == id }
+        if let keepID {
+            currentIndex = items.firstIndex { $0.id == keepID } ?? currentIndex
+        } else {
+            currentIndex = min(currentIndex, items.count - 1)
+        }
+        return wasCurrent
+    }
+
     // MARK: - Playback Navigation
 
     /// Moves the current index forward without (re)starting playback — the AudioPlayer

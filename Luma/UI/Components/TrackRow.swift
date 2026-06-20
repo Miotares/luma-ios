@@ -72,11 +72,11 @@ struct TrackRow: View {
         .sheet(isPresented: $showMetadataEditor) {
             MetadataEditorView(track: track)
         }
-        .confirmationDialog("Titel löschen?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+        .alert("Titel löschen?", isPresented: $showDeleteConfirm) {
+            Button("Abbrechen", role: .cancel) {}
             Button("Löschen", role: .destructive) {
                 try? app.library.delete(track: track)
             }
-            Button("Abbrechen", role: .cancel) {}
         } message: {
             Text("\"\(track.title)\" wird endgültig aus der Mediathek entfernt.")
         }

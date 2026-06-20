@@ -112,8 +112,9 @@ struct AlbumDetailView: View {
         .sheet(isPresented: $showingPlaylistPicker) {
             PlaylistPickerSheet(onPick: addSelected(to:))
         }
-        .confirmationDialog("Album löschen?", isPresented: $showingDeleteConfirm, titleVisibility: .visible) {
-            Button("Album löschen", role: .destructive) {
+        .alert("Album löschen?", isPresented: $showingDeleteConfirm) {
+            Button("Abbrechen", role: .cancel) {}
+            Button("Löschen", role: .destructive) {
                 try? app.library.removeAlbum(album)
                 dismiss()
             }

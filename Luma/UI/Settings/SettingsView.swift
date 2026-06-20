@@ -83,11 +83,8 @@ struct SettingsView: View {
         .sheet(isPresented: $showingSmartSettings) { SmartPlaylistSettingsView() }
         .sheet(isPresented: $showingHomeSettings) { HomeSettingsView() }
         .task { await loadStorageUsage() }
-        .confirmationDialog(
-            "Alle Titel löschen?",
-            isPresented: $showingDeleteConfirm,
-            titleVisibility: .visible
-        ) {
+        .alert("Alle Titel löschen?", isPresented: $showingDeleteConfirm) {
+            Button("Abbrechen", role: .cancel) {}
             Button("Alles löschen", role: .destructive) { deleteAllTracks() }
         } message: {
             Text("Entfernt alle \(tracks.count) Titel. Kann nicht rückgängig gemacht werden.")

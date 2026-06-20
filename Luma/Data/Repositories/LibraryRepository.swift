@@ -7,6 +7,10 @@ import SwiftUI
 final class LibraryRepository {
     private let context: ModelContext
 
+    /// Fired with a track's id right after it is deleted from the store, so playback can be
+    /// torn down if that track was playing (and the queue can drop it).
+    var onTrackDeleted: ((UUID) -> Void)?
+
     init(context: ModelContext) {
         self.context = context
     }
@@ -100,6 +104,7 @@ final class LibraryRepository {
     }
 
     func delete(track: Track) throws {
+        let deletedID = track.id
         // Remove the imported on-disk copy so it doesn't orphan storage.
         if let fileName = track.localFileName {
             MediaStorage.delete(filename: fileName)
@@ -118,6 +123,7 @@ final class LibraryRepository {
         }
         context.delete(track)
         try context.save()
+        onTrackDeleted?(deletedID)
     }
 
     // MARK: - Stats
