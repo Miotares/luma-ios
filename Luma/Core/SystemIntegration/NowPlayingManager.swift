@@ -40,12 +40,18 @@ final class NowPlayingManager {
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, elapsed)
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         center.nowPlayingInfo = info
+        // REQUIRED for an AVAudioEngine (non-AVPlayer) app: the lock-screen / Control Center
+        // play-pause button is driven by playbackState, NOT the info-dict rate. Without it iOS
+        // guesses from the rate/session and the button gets stuck out of sync (first tap
+        // ignored). Set it AFTER nowPlayingInfo.
+        center.playbackState = isPlaying ? .playing : .paused
     }
 
     func clear() {
         currentTrackID = nil
         info = [:]
         center.nowPlayingInfo = nil
+        center.playbackState = .stopped
     }
 
     private func makeArtwork(from data: Data) -> MPMediaItemArtwork? {
