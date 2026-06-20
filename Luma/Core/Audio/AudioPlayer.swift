@@ -42,6 +42,14 @@ final class AudioPlayer {
     /// ~5s throttle while playing — so the queue + play head can be saved for resume.
     var onPersist: (() -> Void)?
 
+    // MARK: - Sleep Timer (observed by UI)
+
+    enum SleepTimerMode: Equatable { case off, duration, endOfTrack }
+    private(set) var sleepMode: SleepTimerMode = .off
+    /// Seconds left on a duration timer (0 when off / end-of-track). The UI reads this.
+    private(set) var sleepRemaining: TimeInterval = 0
+    var isSleepTimerActive: Bool { sleepMode != .off }
+
     private var player: AVPlayer?
     private var playerItem: AVPlayerItem?
     private var timeObserver: Any?
@@ -52,6 +60,11 @@ final class AudioPlayer {
     private var pendingListen: TimeInterval = 0
     // Last position at which the session was persisted, to throttle saves while playing.
     private var lastPersistPos: TimeInterval = 0
+
+    // Sleep timer internals: wall-clock deadline (survives timer coalescing/backgrounding).
+    private var sleepDeadline: Date?
+    private var sleepTimer: Timer?
+    private let sleepFadeDuration: TimeInterval = 8
     // Bounds the skip-on-unplayable loop so an all-missing queue stops instead of looping.
     private var skipFailures = 0
 
@@ -211,6 +224,7 @@ final class AudioPlayer {
 
     func stop() {
         flushListen()
+        cancelSleepTimer()
         teardown()
         stopAccessingCurrentResource()
         currentTrack = nil
@@ -336,7 +350,13 @@ final class AudioPlayer {
     /// crossfade window of its end, start overlapping the next track.
     private func maybeStartCrossfade() {
         let xfade = crossfadeDuration
+        // Suppress crossfade for an active sleep timer near a track boundary: end-of-track
+        // must let the track finish naturally, and a duration timer inside its fade window
+        // should keep its gentle fade rather than have the incoming track ramp to full volume.
+        let sleepSuppressesCrossfade = sleepMode == .endOfTrack
+            || (sleepMode == .duration && sleepRemaining <= sleepFadeDuration)
         guard xfade > 0, !isCrossfading, state == .playing, duration > 0,
+              !sleepSuppressesCrossfade,
               currentTime >= duration - xfade,
               let next = crossfadeNextTrack(),
               let url = resolveURL(for: next) else { return }
@@ -436,6 +456,15 @@ final class AudioPlayer {
             if let track = self.currentTrack {
                 self.onTrackComplete?(track)
             }
+            // Sleep timer set to "end of track": halt here instead of advancing.
+            if self.sleepMode == .endOfTrack {
+                self.cancelSleepTimer()
+                if self.state.isPlaying { self.pause() } else { self.state = .paused }
+                self.seekPlayerItem(to: 0)   // reset so the play button can replay it
+                self.currentTime = 0
+                self.onPersist?()
+                return
+            }
             if let q = self.queue {
                 await q.advance()
             } else {
@@ -454,6 +483,64 @@ final class AudioPlayer {
         player?.pause()
         player = nil
         playerItem = nil
+    }
+
+    // MARK: - Sleep Timer
+
+    /// Pauses playback after `minutes`, fading out over the final seconds.
+    func startSleepTimer(minutes: Int) {
+        restoreSleepVolume()
+        sleepMode = .duration
+        let deadline = Date().addingTimeInterval(TimeInterval(max(1, minutes) * 60))
+        sleepDeadline = deadline
+        sleepRemaining = deadline.timeIntervalSinceNow
+        sleepTimer?.invalidate()
+        // `.common` mode so the countdown/fade keep ticking during scroll tracking.
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+            self?.sleepTick()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        sleepTimer = timer
+    }
+
+    /// Stops playback when the CURRENT track finishes (no countdown, no fade).
+    func startSleepTimerEndOfTrack() {
+        restoreSleepVolume()
+        sleepTimer?.invalidate(); sleepTimer = nil
+        sleepDeadline = nil
+        sleepRemaining = 0
+        sleepMode = .endOfTrack
+    }
+
+    func cancelSleepTimer() {
+        sleepTimer?.invalidate(); sleepTimer = nil
+        sleepDeadline = nil
+        sleepRemaining = 0
+        sleepMode = .off
+        restoreSleepVolume()
+    }
+
+    private func sleepTick() {
+        guard sleepMode == .duration, let deadline = sleepDeadline else { return }
+        let remaining = max(0, deadline.timeIntervalSinceNow)
+        sleepRemaining = remaining
+        if remaining <= 0 {
+            fireSleep()
+        } else if remaining <= sleepFadeDuration, !isCrossfading {
+            // Gentle fade over the final seconds.
+            player?.volume = volume * Float(remaining / sleepFadeDuration)
+        }
+    }
+
+    private func fireSleep() {
+        flushListen()
+        if state.isPlaying { pause() }
+        cancelSleepTimer()   // also restores the faded volume
+    }
+
+    /// Undo a fade-out ramp (no-op during a crossfade, which owns the volume then).
+    private func restoreSleepVolume() {
+        if !isCrossfading { player?.volume = volume }
     }
 
     // MARK: - System Notifications

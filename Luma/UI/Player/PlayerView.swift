@@ -164,6 +164,10 @@ struct PlayerView: View {
 
                     Spacer()
 
+                    SleepTimerIndicator()
+
+                    Spacer()
+
                     VStack(spacing: 5) {
                         AirPlayRoutePicker()
                             .frame(width: 28, height: 28)
@@ -216,6 +220,27 @@ struct PlayerView: View {
             } label: {
                 Label("Zur Playlist hinzufügen", systemImage: "text.badge.plus")
             }
+        }
+
+        Divider()
+
+        Menu {
+            if app.player.isSleepTimerActive {
+                Button(role: .destructive) { app.player.cancelSleepTimer() } label: {
+                    Label("Aus", systemImage: "moon.zzz")
+                }
+                Divider()
+            }
+            ForEach([5, 10, 15, 30, 45, 60, 90], id: \.self) { minutes in
+                Button { app.player.startSleepTimer(minutes: minutes) } label: {
+                    Text("\(minutes) Min")
+                }
+            }
+            Button { app.player.startSleepTimerEndOfTrack() } label: {
+                Label("Ende des Titels", systemImage: "text.append")
+            }
+        } label: {
+            Label("Sleep-Timer", systemImage: "moon.zzz")
         }
     }
 }
@@ -493,6 +518,40 @@ struct PlayerTransport: View {
             .frame(width: 44, height: 44)
             .frame(maxWidth: .infinity)
         }
+    }
+}
+
+// MARK: - Sleep Timer Indicator
+
+/// Small countdown pill shown in the player while a sleep timer runs. Isolated so its
+/// ~2×/sec updates re-render only this capsule, not the blurred player background. Tap to
+/// cancel.
+struct SleepTimerIndicator: View {
+    @Environment(AppContainer.self) private var app
+
+    var body: some View {
+        if app.player.isSleepTimerActive {
+            Button { app.player.cancelSleepTimer() } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "moon.zzz.fill")
+                        .font(.system(size: 12))
+                    Text(label)
+                        .font(.system(size: 12, weight: .semibold))
+                        .monospacedDigit()
+                }
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .glassEffect(.regular, in: .capsule)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var label: String {
+        if app.player.sleepMode == .endOfTrack { return String(localized: "Titelende") }
+        let r = Int(app.player.sleepRemaining.rounded())
+        return String(format: "%d:%02d", r / 60, r % 60)
     }
 }
 
