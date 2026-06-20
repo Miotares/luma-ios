@@ -10,29 +10,32 @@ struct SearchView: View {
 
     @FocusState private var searchFocused: Bool
 
-    private var filteredTracks: [Track] {
-        guard !query.isEmpty else { return [] }
-        let q = query.lowercased()
-        return allTracks.filter {
+    // Debounced results, recomputed off the query via .task(id:) instead of three computed
+    // getters that each re-scanned the whole library on every keystroke AND every re-render.
+    @State private var filteredTracks: [Track] = []
+    @State private var filteredAlbums: [Album] = []
+    @State private var filteredArtists: [Artist] = []
+
+    /// Runs the (debounced) filter whenever the query changes. `.task(id:)` cancels the prior
+    /// run, so the sleep both debounces typing and prevents overlapping full-library scans.
+    private func runSearch() async {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !q.isEmpty else {
+            filteredTracks = []; filteredAlbums = []; filteredArtists = []
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(200))
+        guard !Task.isCancelled else { return }
+        filteredTracks = allTracks.filter {
             $0.title.lowercased().contains(q) ||
             $0.artistName.lowercased().contains(q) ||
             $0.albumTitle.lowercased().contains(q)
         }
-    }
-
-    private var filteredAlbums: [Album] {
-        guard !query.isEmpty else { return [] }
-        let q = query.lowercased()
-        return allAlbums.filter {
+        filteredAlbums = allAlbums.filter {
             $0.title.lowercased().contains(q) ||
             $0.artistName.lowercased().contains(q)
         }
-    }
-
-    private var filteredArtists: [Artist] {
-        guard !query.isEmpty else { return [] }
-        let q = query.lowercased()
-        return allArtists.filter { $0.name.lowercased().contains(q) }
+        filteredArtists = allArtists.filter { $0.name.lowercased().contains(q) }
     }
 
     private var hasResults: Bool {
@@ -48,6 +51,7 @@ struct SearchView: View {
         .background(Color.lumaBackground.ignoresSafeArea())
         .navigationDestination(for: Album.self) { AlbumDetailView(album: $0) }
         .navigationDestination(for: Artist.self) { ArtistDetailView(artist: $0) }
+        .task(id: query) { await runSearch() }
     }
 
     // MARK: - Header
@@ -144,7 +148,7 @@ struct SearchView: View {
                     ForEach(filteredArtists) { artist in
                         NavigationLink(value: artist) {
                             HStack(spacing: 12) {
-                                ArtworkView(data: artist.sortedAlbums.first?.artworkData, cornerRadius: 22, size: 44)
+                                ArtworkView(data: artist.sortedAlbums.first?.artworkData, cacheKey: artist.sortedAlbums.first?.id.uuidString, cornerRadius: 22, size: 44)
                                 Text(artist.name).font(.body).foregroundStyle(.white)
                                 Spacer()
                                 Image(systemName: "chevron.right")
@@ -164,7 +168,7 @@ struct SearchView: View {
                     ForEach(filteredAlbums) { album in
                         NavigationLink(value: album) {
                             HStack(spacing: 12) {
-                                ArtworkView(data: album.artworkData, cornerRadius: 8, size: 48)
+                                ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 8, size: 48)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(album.title).font(.body.weight(.medium)).foregroundStyle(.white).lineLimit(1)
                                     Text(album.artistName).font(.caption).foregroundStyle(.white.opacity(0.5))

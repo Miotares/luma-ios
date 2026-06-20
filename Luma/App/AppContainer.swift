@@ -102,9 +102,14 @@ final class AppContainer {
     /// No-op when nothing is saved or the referenced tracks are gone.
     func restoreLastSession() {
         guard let saved = PlaybackStateStore.load() else { return }
-        let all = (try? modelContext.fetch(FetchDescriptor<Track>())) ?? []
-        guard !all.isEmpty else { return }
-        let map = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        // Fetch ONLY the saved-queue tracks (predicate), not the whole Track table — the old
+        // full-table fetch + dictionary ran on the main thread on every launch.
+        let neededIDs = Set(saved.queue.itemIDs + saved.queue.originalIDs)
+        guard !neededIDs.isEmpty else { return }
+        let descriptor = FetchDescriptor<Track>(predicate: #Predicate { neededIDs.contains($0.id) })
+        let fetched = (try? modelContext.fetch(descriptor)) ?? []
+        guard !fetched.isEmpty else { return }
+        let map = Dictionary(fetched.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         guard queue.restore(from: saved.queue, resolve: { map[$0] }),
               let track = queue.currentTrack else { return }
         Task { await player.prepare(track: track, at: saved.position) }

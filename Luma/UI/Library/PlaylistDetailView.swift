@@ -21,26 +21,38 @@ struct PlaylistDetailView: View {
 
     /// (entry, track) pairs resolved through the track→entry inverse, so entries whose
     /// track was deleted are skipped instead of crashing on `entry.track`.
-    private var validPairs: [(entry: PlaylistEntry, track: Track)] {
-        let map = validEntryTrackMap(allTracks)
-        return playlist.entries
-            .sorted { $0.order < $1.order }
-            .compactMap { entry in map[entry.persistentModelID].map { (entry, $0) } }
+    /// Resolves the playlist's entries against the library in a SINGLE pass over one
+    /// `validEntryTrackMap(allTracks)` build — pairs, placeholders and the unresolved flag at
+    /// once. `body` computes this ONCE and reuses it, instead of the old getters that each
+    /// rebuilt the full-library map (6–8× per body evaluation). Entries whose track was
+    /// deleted are skipped instead of crashing on `entry.track`.
+    private struct Resolved {
+        let pairs: [(entry: PlaylistEntry, track: Track)]
+        let placeholders: [PlaylistEntry]
+        let hasUnresolved: Bool
+        var tracks: [Track] { pairs.map(\.track) }
     }
-    private var tracks: [Track] { validPairs.map(\.track) }
-
-    /// Entries whose track isn't in the library (backup placeholders or a deleted track),
-    /// shown grayed at the bottom. Reads only denormalized metadata, never `entry.track`.
-    private var placeholderEntries: [PlaylistEntry] {
+    private var resolved: Resolved {
         let map = validEntryTrackMap(allTracks)
-        return playlist.entries
-            .sorted { $0.order < $1.order }
-            .filter { map[$0.persistentModelID] == nil && !$0.trackTitle.isEmpty }
+        var pairs: [(entry: PlaylistEntry, track: Track)] = []
+        var placeholders: [PlaylistEntry] = []
+        var hasUnresolved = false
+        for entry in playlist.entries.sorted(by: { $0.order < $1.order }) {
+            if let track = map[entry.persistentModelID] {
+                pairs.append((entry, track))
+            } else {
+                hasUnresolved = true
+                // Grayed placeholder rows show denormalized metadata, never `entry.track`.
+                if !entry.trackTitle.isEmpty { placeholders.append(entry) }
+            }
+        }
+        return Resolved(pairs: pairs, placeholders: placeholders, hasUnresolved: hasUnresolved)
     }
-    private var hasUnresolvedEntries: Bool {
-        let map = validEntryTrackMap(allTracks)
-        return playlist.entries.contains { map[$0.persistentModelID] == nil }
-    }
+    // Convenience accessors for the action handlers (run on tap, not per-render).
+    private var validPairs: [(entry: PlaylistEntry, track: Track)] { resolved.pairs }
+    private var tracks: [Track] { resolved.tracks }
+    private var placeholderEntries: [PlaylistEntry] { resolved.placeholders }
+    private var hasUnresolvedEntries: Bool { resolved.hasUnresolved }
 
     /// Sanitized suggested export filename — playlist names allow `/` and `:`, which
     /// break a file name; fall back to a constant when the name is empty.
@@ -52,36 +64,38 @@ struct PlaylistDetailView: View {
         return cleaned.isEmpty ? "Playlist" : cleaned
     }
 
-    /// Duration of the VALID tracks only — `playlist.formattedDuration` would walk
+    /// Duration of the given (valid) tracks — `playlist.formattedDuration` would walk
     /// `sortedTracks` and crash on a dangling entry.
-    private var tracksDuration: String {
+    private func tracksDuration(_ tracks: [Track]) -> String {
         DurationText.hoursMinutes(tracks.reduce(0) { $0 + $1.duration })
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            DetailBackground(artworkData: tracks.first?.album?.artworkData)
+        let r = resolved
+        let trackList = r.tracks
+        return ZStack(alignment: .topLeading) {
+            DetailBackground(artworkData: trackList.first?.album?.artworkData)
 
             List {
-                playlistHeader
+                playlistHeader(tracks: trackList)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets())
 
-                ForEach(tracks) { track in
+                ForEach(trackList) { track in
                     trackRow(track)
                 }
                 .onMove(perform: moveTracks)
                 .onDelete(perform: deleteAction)
 
-                if !placeholderEntries.isEmpty {
+                if !r.placeholders.isEmpty {
                     Text("Nicht in der Mediathek")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.4))
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 20, leading: 18, bottom: 8, trailing: 16))
-                    ForEach(placeholderEntries) { entry in
+                    ForEach(r.placeholders) { entry in
                         placeholderRow(entry)
                             .frame(minHeight: 56)
                             .listRowBackground(Color.clear)
@@ -243,16 +257,16 @@ struct PlaylistDetailView: View {
 
     // MARK: - Header
 
-    private var playlistHeader: some View {
+    private func playlistHeader(tracks: [Track]) -> some View {
         #if os(macOS)
-        macPlaylistHeader
+        macPlaylistHeader(tracks: tracks)
         #else
-        iosPlaylistHeader
+        iosPlaylistHeader(tracks: tracks)
         #endif
     }
 
     #if os(macOS)
-    private var macPlaylistHeader: some View {
+    private func macPlaylistHeader(tracks: [Track]) -> some View {
         HStack(alignment: .bottom, spacing: 28) {
             PlaylistArtworkView(tracks: tracks, cornerRadius: 12)
                 .frame(width: 220, height: 220)
@@ -278,7 +292,7 @@ struct PlaylistDetailView: View {
                         .onTapGesture { isEditingName = true; editedName = playlist.name }
                 }
 
-                Text(verbatim: "\(CountText.songs(tracks.count)) · \(tracksDuration)")
+                Text(verbatim: "\(CountText.songs(tracks.count)) · \(tracksDuration(tracks))")
                     .font(.system(size: 13))
                     .foregroundStyle(.white.opacity(0.45))
                     .padding(.top, 6)
@@ -299,7 +313,7 @@ struct PlaylistDetailView: View {
     }
     #endif
 
-    private var iosPlaylistHeader: some View {
+    private func iosPlaylistHeader(tracks: [Track]) -> some View {
         VStack(spacing: 18) {
             PlaylistArtworkView(tracks: tracks, cornerRadius: 20)
                 .frame(width: 210, height: 210)
@@ -329,7 +343,7 @@ struct PlaylistDetailView: View {
                 }
 
                 let count = tracks.count
-                Text(verbatim: "\(CountText.songs(count)) · \(tracksDuration)")
+                Text(verbatim: "\(CountText.songs(count)) · \(tracksDuration(tracks))")
                     .font(.subheadline)
                     .foregroundStyle(.white.opacity(0.45))
             }
