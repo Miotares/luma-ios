@@ -6,6 +6,7 @@ extension Color {
     static let lumaBackground = Color(red: 0.051, green: 0.051, blue: 0.067)
     static let lumaSurface    = Color(red: 0.098, green: 0.102, blue: 0.133)
     static let lumaAccent     = Color.white   // neutral accent — app-wide, no blue tint
+    static let lumaToggle     = Color(red: 0.22, green: 0.80, blue: 0.46) // readable "on" for switches (white tint is invisible on dark)
 }
 
 // MARK: - Open Now Playing Environment Key

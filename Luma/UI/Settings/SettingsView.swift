@@ -15,6 +15,7 @@ struct SettingsView: View {
     @Query private var playlists: [Playlist]
     @State private var showingDeleteConfirm = false
     @State private var showingImport = false
+    @State private var showingEqualizer = false
     @State private var storageBytes: Int64 = 0
     #if os(iOS)
     @State private var currentIconName: String?
@@ -47,6 +48,7 @@ struct SettingsView: View {
                     #endif
                     sectionLabel("Wiedergabe")
                     crossfadeBlock
+                    equalizerBlock
                     sectionLabel("Mediathek")
                     statsBlock
                     #if os(iOS)
@@ -73,6 +75,7 @@ struct SettingsView: View {
         .background(Color.lumaBackground.ignoresSafeArea())
         .navigationDestination(for: StatisticsRoute.self) { _ in StatisticsView() }
         .sheet(isPresented: $showingImport) { ImportView() }
+        .sheet(isPresented: $showingEqualizer) { EqualizerView() }
         .task { await loadStorageUsage() }
         .confirmationDialog(
             "Alle Titel löschen?",
@@ -141,7 +144,7 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
-            .tint(Color.lumaAccent)
+            .tint(Color.lumaToggle)
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
             .onChange(of: backupEnabled) { _, _ in
@@ -218,6 +221,30 @@ struct SettingsView: View {
         .padding(.vertical, 14)
         .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal, 16)
+    }
+
+    private var equalizerBlock: some View {
+        Button { showingEqualizer = true } label: {
+            HStack {
+                Image(systemName: "slider.vertical.3")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.lumaAccent)
+                    .frame(width: 28)
+                Text("Equalizer").foregroundStyle(.white)
+                Spacer()
+                Text(app.equalizer.isEnabled ? "An" : "Aus")
+                    .foregroundStyle(.white.opacity(0.45))
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.25))
+            }
+            .padding(.horizontal, 20)
+            .frame(minHeight: 50)
+        }
+        .buttonStyle(LumaRowStyle())
+        .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
     }
 
     private var toolsBlock: some View {

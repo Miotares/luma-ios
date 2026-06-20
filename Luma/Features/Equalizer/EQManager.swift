@@ -77,6 +77,14 @@ final class EQManager {
         apply()
     }
 
+    /// Flatten all bands (0 dB) without changing the on/off state.
+    func reset() {
+        gains = Array(repeating: 0, count: Self.bandCount)
+        presetID = "flat"
+        persist()
+        apply()
+    }
+
     // MARK: - Apply / persist
 
     private var isFlat: Bool { gains.allSatisfy { abs($0) < 0.1 } }
