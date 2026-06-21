@@ -231,6 +231,21 @@ final class LibraryRepository {
         try context.save()
     }
 
+    /// Persists a playlist's cover choice in one save. `photoData` is the full desired image
+    /// (already downscaled by the caller) or nil to clear it; the generated config is always
+    /// stored so the look is remembered even when another style is active. Bumps `coverVersion`
+    /// so ArtworkView's decoded-image cache drops any stale photo for this playlist.
+    func updatePlaylistCover(_ playlist: Playlist,
+                             style: PlaylistCoverStyle,
+                             photoData: Data?,
+                             generatedConfig: GeneratedCoverConfig) throws {
+        playlist.coverStyle = style
+        playlist.customArtworkData = photoData
+        playlist.generatedCoverConfig = try? JSONEncoder().encode(generatedConfig)
+        playlist.coverVersion &+= 1
+        try context.save()
+    }
+
     // MARK: - Playlist Backup (export / import)
 
     /// Match key for re-linking a backup entry to a library track: title+artist+album,
@@ -250,16 +265,26 @@ final class LibraryRepository {
         let allTracks = (try? context.fetch(FetchDescriptor<Track>())) ?? []
         let map = validEntryTrackMap(allTracks)
         let backup = PlaylistBackup(version: 1, playlists: lists.map { pl in
-            BackupPlaylist(name: pl.name, tracks: pl.entries.sorted { $0.order < $1.order }.map { e in
-                let track = map[e.persistentModelID]
-                return BackupTrack(
-                    title: e.trackTitle,
-                    artist: e.trackArtist,
-                    album: e.trackAlbum,
-                    duration: track?.duration,
-                    trackNumber: track?.trackNumber
-                )
-            })
+            // A `.photo` cover isn't carried (the image is on-device only), so back it up as
+            // `.mosaic`; `.generated`/`.mosaic` are preserved. The generated recipe is tiny.
+            let exportedStyle: PlaylistCoverStyle = pl.coverStyle == .photo ? .mosaic : pl.coverStyle
+            let generated = pl.generatedCoverConfig
+                .flatMap { try? JSONDecoder().decode(GeneratedCoverConfig.self, from: $0) }
+            return BackupPlaylist(
+                name: pl.name,
+                tracks: pl.entries.sorted { $0.order < $1.order }.map { e in
+                    let track = map[e.persistentModelID]
+                    return BackupTrack(
+                        title: e.trackTitle,
+                        artist: e.trackArtist,
+                        album: e.trackAlbum,
+                        duration: track?.duration,
+                        trackNumber: track?.trackNumber
+                    )
+                },
+                coverStyle: exportedStyle.rawValue,
+                generatedCover: generated
+            )
         })
         return try? JSONEncoder().encode(backup)
     }
@@ -285,6 +310,15 @@ final class LibraryRepository {
             guard existingNames.insert(name.lowercased()).inserted else { continue }
             let playlist = Playlist(name: name)
             playlist.sortIndex = minSort - 1 - created
+            // Restore the cover choice. A backed-up `.photo` was already downgraded to `.mosaic`
+            // on export (the image isn't carried), so this never leaves a photo cover without
+            // its blob. The generated recipe is re-encoded as the playlist's stored config.
+            if let raw = bp.coverStyle, let style = PlaylistCoverStyle(rawValue: raw) {
+                playlist.coverStyle = style
+            }
+            if let generated = bp.generatedCover {
+                playlist.generatedCoverConfig = try? JSONEncoder().encode(generated)
+            }
             created += 1
             context.insert(playlist)
             for (order, bt) in bp.tracks.enumerated() {

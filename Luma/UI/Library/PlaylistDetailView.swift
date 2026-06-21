@@ -12,6 +12,7 @@ struct PlaylistDetailView: View {
     @State private var editedName = ""
     @State private var isEditing = false
     @State private var showingDeleteConfirm = false
+    @State private var showingCoverEditor = false
 
     @State private var isSelecting = false
     @State private var selection: Set<UUID> = []
@@ -177,6 +178,10 @@ struct PlaylistDetailView: View {
         .sheet(isPresented: $showingPlaylistPicker) {
             PlaylistPickerSheet(onPick: addSelected(to:))
         }
+        .sheet(isPresented: $showingCoverEditor) {
+            PlaylistCoverEditor(playlist: playlist, tracks: tracks)
+                .environment(app)
+        }
         .fileExporter(isPresented: $showingExporter, document: exportDocument,
                       contentType: .json, defaultFilename: exportFilename) { _ in }
         .alert("Playlist löschen?", isPresented: $showingDeleteConfirm) {
@@ -219,6 +224,11 @@ struct PlaylistDetailView: View {
             isEditingName = true
         } label: {
             Label("Umbenennen", systemImage: "pencil")
+        }
+        Button {
+            showingCoverEditor = true
+        } label: {
+            Label("Cover ändern", systemImage: "photo")
         }
         Button {
             exportThis()
@@ -268,13 +278,14 @@ struct PlaylistDetailView: View {
     #if os(macOS)
     private func macPlaylistHeader(tracks: [Track]) -> some View {
         HStack(alignment: .bottom, spacing: 28) {
-            PlaylistArtworkView(tracks: tracks, cornerRadius: 12)
+            PlaylistArtworkView(playlist: playlist, tracks: tracks, cornerRadius: 12)
                 .frame(width: 220, height: 220)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
                 )
                 .shadow(color: .black.opacity(0.5), radius: 24, y: 14)
+                .onTapGesture { showingCoverEditor = true }
 
             VStack(alignment: .leading, spacing: 0) {
                 if isEditingName {
@@ -315,7 +326,7 @@ struct PlaylistDetailView: View {
 
     private func iosPlaylistHeader(tracks: [Track]) -> some View {
         VStack(spacing: 18) {
-            PlaylistArtworkView(tracks: tracks, cornerRadius: 20)
+            PlaylistArtworkView(playlist: playlist, tracks: tracks, cornerRadius: 20)
                 .frame(width: 210, height: 210)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -323,6 +334,7 @@ struct PlaylistDetailView: View {
                 )
                 .shadow(color: .black.opacity(0.55), radius: 30, y: 20)
                 .padding(.top, 112)
+                .onTapGesture { showingCoverEditor = true }
 
             VStack(spacing: 6) {
                 if isEditingName {

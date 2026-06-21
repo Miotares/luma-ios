@@ -229,7 +229,7 @@ struct LibraryView: View {
                     ForEach(pinnedPlaylists) { playlist in
                         NavigationLink(value: playlist) {
                             VStack(alignment: .leading, spacing: 0) {
-                                PlaylistArtworkView(tracks: playlist.safeSortedTracks(using: map), cornerRadius: 14)
+                                PlaylistArtworkView(playlist: playlist, tracks: playlist.safeSortedTracks(using: map), cornerRadius: 14)
                                     .frame(width: 116, height: 116)
                                     .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
                                 Text(playlist.name)

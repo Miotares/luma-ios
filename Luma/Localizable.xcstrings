@@ -1,11 +1,16 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
-    "" : {
-
-    },
+    "" : {},
     "–" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "–"
+          }
+        }
+      }
     },
     ", %lld fehlgeschlagen" : {
       "localizations" : {
@@ -48,7 +53,14 @@
       }
     },
     "%lld" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld"
+          }
+        }
+      }
     },
     "%lld Alben" : {
       "localizations" : {
@@ -101,7 +113,14 @@
       }
     },
     "%lld dB" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld dB"
+          }
+        }
+      }
     },
     "%lld importiert" : {
       "localizations" : {
@@ -134,7 +153,14 @@
       }
     },
     "%lld s" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld s"
+          }
+        }
+      }
     },
     "%lld Songs" : {
       "localizations" : {
@@ -238,7 +264,14 @@
       }
     },
     "%lld×" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld×"
+          }
+        }
+      }
     },
     "Abbrechen" : {
       "localizations" : {
@@ -450,6 +483,16 @@
         }
       }
     },
+    "Anderes Foto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Other photo"
+          }
+        }
+      }
+    },
     "Änderungen am Albuminterpret verschieben das ganze Album zu diesem Künstler." : {
       "localizations" : {
         "en" : {
@@ -632,6 +675,26 @@
         }
       }
     },
+    "Cover" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cover"
+          }
+        }
+      }
+    },
+    "Cover ändern" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Change cover"
+          }
+        }
+      }
+    },
     "Cross-Fade" : {
       "localizations" : {
         "en" : {
@@ -648,6 +711,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The app icon on your Home Screen. iOS shows a one-time prompt when it changes."
+          }
+        }
+      }
+    },
+    "Das Cover wird automatisch aus den ersten Titeln deiner Playlist gebildet." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The cover is generated automatically from the first tracks in your playlist."
           }
         }
       }
@@ -682,12 +755,32 @@
         }
       }
     },
+    "Dein Foto bleibt auf dem Gerät – es wird nichts hochgeladen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your photo stays on your device — nothing is uploaded."
+          }
+        }
+      }
+    },
     "Deine Playlists" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Your Playlists"
+          }
+        }
+      }
+    },
+    "Diagonal" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagonal"
           }
         }
       }
@@ -782,6 +875,16 @@
         }
       }
     },
+    "Farbe" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Color"
+          }
+        }
+      }
+    },
     "Fehler: %@" : {
       "localizations" : {
         "en" : {
@@ -808,6 +911,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Flat"
+          }
+        }
+      }
+    },
+    "Foto" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Photo"
+          }
+        }
+      }
+    },
+    "Foto auswählen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose photo"
+          }
+        }
+      }
+    },
+    "Foto entfernen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove photo"
           }
         }
       }
@@ -1123,6 +1256,16 @@
         }
       }
     },
+    "Korn" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grain"
+          }
+        }
+      }
+    },
     "Künstler" : {
       "localizations" : {
         "en" : {
@@ -1194,6 +1337,16 @@
         }
       }
     },
+    "Linien" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lines"
+          }
+        }
+      }
+    },
     "Liste" : {
       "localizations" : {
         "en" : {
@@ -1254,6 +1407,26 @@
         }
       }
     },
+    "Mesh" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mesh"
+          }
+        }
+      }
+    },
+    "Mosaik" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mosaic"
+          }
+        }
+      }
+    },
     "Musik importieren" : {
       "localizations" : {
         "en" : {
@@ -1280,6 +1453,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add Music Folder…"
+          }
+        }
+      }
+    },
+    "Muster" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pattern"
           }
         }
       }
@@ -1346,7 +1529,14 @@
       }
     },
     "Neu ordnen" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reorder"
+          }
+        }
+      }
     },
     "Neue Playlist" : {
       "localizations" : {
@@ -1414,8 +1604,25 @@
         }
       }
     },
+    "Ohne" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "None"
+          }
+        }
+      }
+    },
     "OK" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OK"
+          }
+        }
+      }
     },
     "Ordner auswählen" : {
       "localizations" : {
@@ -1507,6 +1714,16 @@
         }
       }
     },
+    "Playlist-Titel anzeigen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show playlist title"
+          }
+        }
+      }
+    },
     "Playlists" : {
       "localizations" : {
         "en" : {
@@ -1547,6 +1764,16 @@
         }
       }
     },
+    "Punkte" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dots"
+          }
+        }
+      }
+    },
     "Scanne…" : {
       "localizations" : {
         "en" : {
@@ -1558,7 +1785,14 @@
       }
     },
     "Shuffle" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shuffle"
+          }
+        }
+      }
     },
     "Sichern" : {
       "localizations" : {
@@ -1690,12 +1924,32 @@
         }
       }
     },
+    "Stil" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Style"
+          }
+        }
+      }
+    },
     "Stimme" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Vocal"
+          }
+        }
+      }
+    },
+    "Strahl" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rays"
           }
         }
       }
@@ -1716,6 +1970,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Search"
+          }
+        }
+      }
+    },
+    "Symbol" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Symbol"
+          }
+        }
+      }
+    },
+    "Textur" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Texture"
           }
         }
       }
@@ -1850,12 +2124,32 @@
         }
       }
     },
+    "Verlauf" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gradient"
+          }
+        }
+      }
+    },
     "Version" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Version"
+          }
+        }
+      }
+    },
+    "Vignette" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vignette"
           }
         }
       }
@@ -1901,7 +2195,14 @@
       }
     },
     "Warteschlange neu ordnen" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reorder queue"
+          }
+        }
+      }
     },
     "Welcher Tab beim Öffnen der App angezeigt wird." : {
       "localizations" : {
@@ -1929,6 +2230,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Playback"
+          }
+        }
+      }
+    },
+    "Wirbel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swirl"
           }
         }
       }

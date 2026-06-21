@@ -12,6 +12,11 @@ struct PlaylistBackup: Codable {
 struct BackupPlaylist: Codable {
     var name: String
     var tracks: [BackupTrack]
+    /// Cover style raw value (`PlaylistCoverStyle`). Optional so older backups still decode; a
+    /// `.photo` cover is exported as `.mosaic` since the on-device-only photo isn't carried.
+    var coverStyle: Int? = nil
+    /// The generated-cover recipe (tiny), so a `.generated` cover survives an export/import.
+    var generatedCover: GeneratedCoverConfig? = nil
 }
 
 struct BackupTrack: Codable {

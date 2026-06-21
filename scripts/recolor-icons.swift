@@ -49,8 +49,11 @@ let variants = [
 
 func writePNG(_ buffer: [UInt8], to path: String) {
     var b = buffer
+    // iOS app icons must NOT carry an alpha channel (App Store upload rejects them, ITMS-90717).
+    // The buffer is RGBX (alpha byte = 255); noneSkipLast ignores it so ImageIO writes 24-bit RGB.
+    let opaque = CGImageAlphaInfo.noneSkipLast.rawValue
     let ctx = CGContext(data: &b, width: W, height: H, bitsPerComponent: 8,
-                        bytesPerRow: bpr, space: cs, bitmapInfo: bm)!
+                        bytesPerRow: bpr, space: cs, bitmapInfo: opaque)!
     guard let img = ctx.makeImage() else { fatalError("makeImage failed") }
     let url = URL(fileURLWithPath: path)
     guard let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)

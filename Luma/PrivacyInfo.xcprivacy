@@ -28,6 +28,15 @@
 				<string>3B52.1</string>
 			</array>
 		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<!-- E174.1: Read sizes of the app's own media files to show used storage to the user, on-device -->
+				<string>E174.1</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

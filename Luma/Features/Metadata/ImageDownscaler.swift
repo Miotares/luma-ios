@@ -10,7 +10,10 @@ import UniformTypeIdentifiers
 /// Uses ImageIO thumbnailing, which decodes the source at the reduced size instead of
 /// inflating the full bitmap into memory — cheap enough to run per track in the off-actor
 /// import pipeline.
-enum ImageDownscaler {
+// `nonisolated` so it can run off the main actor — the module defaults types to @MainActor, but
+// this is pure, stateless CoreGraphics work meant to run on the cooperative pool (the import
+// pipeline's nonisolated MetadataParser and the cover editor's detached downscale both rely on it).
+nonisolated enum ImageDownscaler {
     /// Returns a downscaled JPEG (long edge ≤ `maxPixel`), or the original bytes unchanged if
     /// decoding fails or the source is already smaller than the result.
     static func thumbnail(from data: Data, maxPixel: Int = 1024, quality: CGFloat = 0.82) -> Data {

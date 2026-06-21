@@ -63,6 +63,9 @@ struct PlaylistsView: View {
     @State private var exportDocument: PlaylistBackupDocument?
     @State private var showingImportResult = false
     @State private var importMessage = ""
+    /// Non-nil while the cover editor is presented for a specific playlist (from the gallery
+    /// context menu).
+    @State private var coverEditorPlaylist: Playlist?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -90,6 +93,13 @@ struct PlaylistsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(importMessage)
+        }
+        .sheet(item: $coverEditorPlaylist) { playlist in
+            PlaylistCoverEditor(
+                playlist: playlist,
+                tracks: playlist.safeSortedTracks(using: validEntryTrackMap(allTracks))
+            )
+            .environment(app)
         }
     }
 
@@ -224,6 +234,11 @@ struct PlaylistsView: View {
                                 }
                                 .buttonStyle(.plain)
                                 .contextMenu {
+                                    Button {
+                                        coverEditorPlaylist = playlist
+                                    } label: {
+                                        Label("Cover ändern", systemImage: "photo")
+                                    }
                                     Button(role: .destructive) {
                                         try? app.library.deletePlaylist(playlist)
                                     } label: {
@@ -253,7 +268,7 @@ struct PlaylistsView: View {
         return List {
             ForEach(playlists) { playlist in
                 HStack(spacing: 12) {
-                    PlaylistArtworkView(tracks: playlist.safeSortedTracks(using: map), cornerRadius: 8)
+                    PlaylistArtworkView(playlist: playlist, tracks: playlist.safeSortedTracks(using: map), cornerRadius: 8)
                         .frame(width: 46, height: 46)
                     Text(playlist.name)
                         .font(.system(size: 16, weight: .medium))
@@ -308,7 +323,7 @@ struct PlaylistCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            PlaylistArtworkView(tracks: tracks)
+            PlaylistArtworkView(playlist: playlist, tracks: tracks)
                 .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
             VStack(alignment: .leading, spacing: 2) {
                 Text(playlist.name)
@@ -327,11 +342,46 @@ struct PlaylistCard: View {
     }
 }
 
-/// Playlist cover: a 2×2 mosaic of the first four tracks' artwork, or just the first
-/// track's artwork when there are fewer than four. Updates automatically as tracks change.
+/// Playlist cover. Renders one of three styles per `playlist.coverStyle`:
+///   • `.mosaic` (default) — a 2×2 grid of the first four tracks' artwork (or a single cover when
+///     there are fewer than four). Updates automatically as tracks change.
+///   • `.photo` — the user's on-device image.
+///   • `.generated` — an app-rendered pattern (see `GeneratedCoverView`).
+///
+/// The style is read from the cheap scalar `coverStyleRaw`, so deciding which branch to render
+/// never faults the externalStorage photo blob — that's loaded lazily by `ArtworkView` only when
+/// the `.photo` branch is actually shown. `playlist` is optional so a caller (e.g. the editor's
+/// Mosaik preview) can force a plain mosaic from `tracks` alone by passing nil.
 struct PlaylistArtworkView: View {
+    var playlist: Playlist?
     let tracks: [Track]
     var cornerRadius: CGFloat = 14
+
+    var body: some View {
+        switch playlist?.coverStyle ?? .mosaic {
+        case .mosaic:
+            mosaic
+        case .photo:
+            // The data: argument is an autoclosure — `playlist?.customArtworkData` is NOT read
+            // here, only inside ArtworkView's .task on a cache miss. The cache key carries
+            // `coverVersion` so a replaced photo invalidates the decoded-image cache. `maxPixel`
+            // caps the decode at 512px (matching the album gallery card): this view fills cards
+            // as small as a 2-column gallery tile, and the stored photo is ~1024px, so decoding
+            // it full would cache a ~4 MB bitmap per card on the busiest scroll surface.
+            ArtworkView(data: playlist?.customArtworkData, cacheKey: photoCacheKey,
+                        cornerRadius: cornerRadius, size: nil, maxPixel: 512)
+                .aspectRatio(1, contentMode: .fit)
+        case .generated:
+            GeneratedCoverView(config: playlist?.generatedConfigValue ?? .default,
+                               title: playlist?.name, cornerRadius: cornerRadius)
+                .aspectRatio(1, contentMode: .fit)
+        }
+    }
+
+    private var photoCacheKey: String? {
+        guard let playlist else { return nil }
+        return "plcover-\(playlist.id.uuidString)-\(playlist.coverVersion)"
+    }
 
     /// The first four DISTINCT albums in playlist order, de-duplicated by album identity (not
     /// artwork bytes) so four songs from the same album don't repeat a tile. Crucially this
@@ -351,29 +401,28 @@ struct PlaylistArtworkView: View {
         return result
     }
 
-    var body: some View {
+    @ViewBuilder
+    private var mosaic: some View {
         let albums = coverAlbums
-        Group {
-            if albums.count >= 4 {
-                GeometryReader { geo in
-                    let half = (geo.size.width - 2) / 2
-                    VStack(spacing: 2) {
-                        HStack(spacing: 2) {
-                            ArtworkView(data: albums[0].artworkData, cacheKey: albums[0].id.uuidString, cornerRadius: 0, size: half)
-                            ArtworkView(data: albums[1].artworkData, cacheKey: albums[1].id.uuidString, cornerRadius: 0, size: half)
-                        }
-                        HStack(spacing: 2) {
-                            ArtworkView(data: albums[2].artworkData, cacheKey: albums[2].id.uuidString, cornerRadius: 0, size: half)
-                            ArtworkView(data: albums[3].artworkData, cacheKey: albums[3].id.uuidString, cornerRadius: 0, size: half)
-                        }
+        if albums.count >= 4 {
+            GeometryReader { geo in
+                let half = (geo.size.width - 2) / 2
+                VStack(spacing: 2) {
+                    HStack(spacing: 2) {
+                        ArtworkView(data: albums[0].artworkData, cacheKey: albums[0].id.uuidString, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[1].artworkData, cacheKey: albums[1].id.uuidString, cornerRadius: 0, size: half)
+                    }
+                    HStack(spacing: 2) {
+                        ArtworkView(data: albums[2].artworkData, cacheKey: albums[2].id.uuidString, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[3].artworkData, cacheKey: albums[3].id.uuidString, cornerRadius: 0, size: half)
                     }
                 }
-                .aspectRatio(1, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            } else {
-                ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.id.uuidString, cornerRadius: cornerRadius, size: nil)
-                    .aspectRatio(1, contentMode: .fit)
             }
+            .aspectRatio(1, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        } else {
+            ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.id.uuidString, cornerRadius: cornerRadius, size: nil)
+                .aspectRatio(1, contentMode: .fit)
         }
     }
 }
