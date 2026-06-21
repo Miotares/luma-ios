@@ -44,7 +44,7 @@ struct StatisticsView: View {
                         sectionHeader("Top Songs")
                         ForEach(Array(topPlayed.enumerated()), id: \.element.id) { idx, track in
                             topTrackRow(rank: idx + 1, track: track)
-                            if idx < topPlayed.count - 1 { LumaSeparator() }
+                            if idx < topPlayed.count - 1 { LumaSeparator(leadingPad: 0) }
                         }
                     }
 
@@ -52,7 +52,7 @@ struct StatisticsView: View {
                         sectionHeader("Top Künstler")
                         ForEach(Array(topArtists.enumerated()), id: \.element.artist.id) { idx, entry in
                             topArtistRow(rank: idx + 1, artist: entry.artist, seconds: entry.seconds)
-                            if idx < topArtists.count - 1 { LumaSeparator() }
+                            if idx < topArtists.count - 1 { LumaSeparator(leadingPad: 0) }
                         }
                     }
 

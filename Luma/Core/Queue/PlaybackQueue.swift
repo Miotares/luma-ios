@@ -82,6 +82,15 @@ final class PlaybackQueue {
         }
     }
 
+    /// Replaces the upcoming tracks (everything after the current one) with `newUpNext`,
+    /// leaving the current track and the already-played history untouched. Backs the queue
+    /// view's drag-to-reorder, which edits the up-next slice through a binding.
+    func replaceUpNext(with newUpNext: [Track]) {
+        let pivot = currentIndex + 1
+        guard pivot >= 0, pivot <= items.count else { return }
+        items.replaceSubrange(pivot..<items.count, with: newUpNext)
+    }
+
     func clear() {
         items = []
         originalOrder = []
@@ -170,6 +179,13 @@ final class PlaybackQueue {
         await playCurrentTrack()
     }
 
+    /// Plays a track by identity — its position is resolved on the spot. Used by the queue
+    /// view, where reordering means rows are addressed by value rather than a stable index.
+    func play(_ track: Track) async {
+        guard let idx = items.firstIndex(where: { $0.id == track.id }) else { return }
+        await play(at: idx)
+    }
+
     // MARK: - Shuffle / Repeat
 
     func toggleShuffle() {
@@ -184,6 +200,29 @@ final class PlaybackQueue {
             items = originalOrder
             currentIndex = current.flatMap { c in items.firstIndex(where: { $0.id == c.id }) } ?? 0
         }
+    }
+
+    /// Re-mixes the upcoming tracks into a fresh random order, leaving the current track and
+    /// the already-played history in place so playback continues uninterrupted. Marks the queue
+    /// as shuffled so the player's shuffle control reflects the new order. No-op when nothing is
+    /// queued ahead.
+    func reshuffle() {
+        let pivot = currentIndex + 1                 // first "up next" slot (0 when nothing plays)
+        guard pivot < items.count else { return }
+        shuffleMode = .on
+
+        let upcoming = Array(items[pivot...])
+        guard upcoming.count > 1 else { return }     // a single track can't be re-ordered
+
+        var mixed = upcoming.shuffled()
+        // Guarantee a visible change for small queues, where a plain shuffle can reproduce the
+        // same order (a 2-track tail stays put half the time) — pressing "mix" must do something.
+        var attempts = 0
+        while attempts < 5, mixed.map(\.id) == upcoming.map(\.id) {
+            mixed.shuffle()
+            attempts += 1
+        }
+        items = Array(items[..<pivot]) + mixed
     }
 
     func toggleRepeat() {

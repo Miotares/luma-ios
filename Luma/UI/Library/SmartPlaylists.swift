@@ -53,7 +53,10 @@ enum SmartPlaylistKind: Hashable {
                 predicate: #Predicate { $0.playCount > 0 },
                 sortBy: [SortDescriptor(\.playCount, order: .reverse)]
             )
-            d.fetchLimit = 100
+            // Higher cap than the other rolling lists so the genre filter has real coverage:
+            // "Meistgespielt · Rock" should surface played Rock tracks even when they sit below
+            // the very top of the global play-count ranking (still bounded + lazily rendered).
+            d.fetchLimit = 500
         case .recentlyPlayed:
             d = FetchDescriptor<Track>(
                 predicate: #Predicate { $0.lastPlayedDate != nil },
@@ -94,6 +97,32 @@ func lumaDecadeLabel(_ decade: Int) -> String {
     return "\(decade)\(suffix)"
 }
 
+/// The secondary axis a smart list can be narrowed by. Genre-agnostic lists (most-played,
+/// liked, a decade) narrow by **genre**; a single-genre list narrows by **decade** — the
+/// same "Rock aus den 80ern" result, just reached from the other direction.
+enum SmartFilterAxis { case genre, decade }
+
+extension SmartPlaylistKind {
+    /// Which axis the detail view offers as an in-list filter (nil = no filter rail).
+    var filterAxis: SmartFilterAxis? {
+        switch self {
+        case .mostPlayed, .liked, .decade:    return .genre
+        case .genre:                          return .decade
+        case .recentlyPlayed, .recentlyAdded: return nil
+        }
+    }
+}
+
+private extension Track {
+    /// Trimmed, non-empty genre (matches the hub's aggregation), or nil.
+    var lumaFilterGenre: String? {
+        guard let g = genre?.trimmingCharacters(in: .whitespaces), !g.isEmpty else { return nil }
+        return g
+    }
+    /// Decade start year, e.g. 1987 → 1980 (matches the hub's `(y / 10) * 10`).
+    var lumaFilterDecade: Int? { year.map { ($0 / 10) * 10 } }
+}
+
 /// Drill-down hubs (a list of genres / decades), pushed from the smart section.
 enum SmartHub: Hashable { case genre, decade }
 
@@ -102,7 +131,10 @@ enum SmartHub: Hashable { case genre, decade }
 /// The smart-list tiles the user can individually show/hide in Settings. Each maps to a
 /// destination (a SmartPlaylistKind list, or a genre/decade hub).
 enum SmartSectionKind: String, CaseIterable, Identifiable {
-    case mostPlayed, recentlyPlayed, recentlyAdded, liked, genre, decade
+    // Declaration order is the default tile order (used by `lumaSmartOrderedKinds` until the
+    // user drags a custom order in Settings). `recentlyPlayed` isn't in the requested default
+    // five, so it trails at the end. Raw values stay fixed, so persistence is unaffected.
+    case mostPlayed, genre, decade, recentlyAdded, liked, recentlyPlayed
 
     static let masterKey = "smartPlaylistsEnabled"
 
@@ -287,6 +319,23 @@ struct SmartPlaylistSettingsView: View {
         orderData = lumaEncodeSmartOrder(kinds)
     }
 
+    private var orderedKinds: [SmartSectionKind] { lumaSmartOrderedKinds(orderData) }
+
+    /// Full-bleed row separators. The native List separators are inset by the row's content
+    /// margins (and the edit-mode reorder grip), so they don't reach the screen edges. Drawing
+    /// them into the row background instead — which spans the whole cell width — makes them run
+    /// edge-to-edge, matching the surface box. `topSeparator` adds a line above a section's
+    /// first row so the block is capped top and bottom.
+    private func rowBackground(topSeparator: Bool = false) -> some View {
+        Color.lumaSurface
+            .overlay(alignment: .top) { separatorLine.opacity(topSeparator ? 1 : 0) }
+            .overlay(alignment: .bottom) { separatorLine }
+    }
+
+    private var separatorLine: some View {
+        Rectangle().fill(.white.opacity(0.08)).frame(height: 0.5)
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -295,14 +344,15 @@ struct SmartPlaylistSettingsView: View {
                         Text("Smart-Playlists anzeigen").foregroundStyle(.white)
                     }
                     .tint(Color.lumaToggle)
-                    .listRowBackground(Color.lumaSurface)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(rowBackground(topSeparator: true))
                 }
 
                 if enabled {
                     Section {
                         // Native List reorder (same as the Queue): the rows shift and you can
                         // grab a whole row to move it. The Toggle switch stays tappable.
-                        ForEach(lumaSmartOrderedKinds(orderData), id: \.self) { kind in
+                        ForEach(orderedKinds, id: \.self) { kind in
                             Toggle(isOn: binding(for: kind)) {
                                 HStack(spacing: 12) {
                                     Image(systemName: kind.systemImage)
@@ -313,14 +363,12 @@ struct SmartPlaylistSettingsView: View {
                                 }
                             }
                             .tint(Color.lumaToggle)
-                            .listRowBackground(Color.lumaSurface)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(rowBackground(topSeparator: kind == orderedKinds.first))
                         }
                         .onMove(perform: move)
                     } header: {
                         Text("Sichtbare Listen").foregroundStyle(.white.opacity(0.45))
-                    } footer: {
-                        Text("Ziehe eine Liste am Griff, um die Reihenfolge zu ändern.")
-                            .foregroundStyle(.white.opacity(0.35))
                     }
                 }
             }
@@ -345,22 +393,109 @@ struct SmartPlaylistSettingsView: View {
     }
 }
 
+// MARK: - Filter chip
+
+/// Pill toggle for the smart-list filter rail. "On" mirrors the primary play button
+/// (white fill / black text) so the active filter reads at a glance on the dark UI.
+private struct LumaFilterChip: View {
+    let title: String
+    let isOn: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .tracking(-0.2)
+                .foregroundStyle(isOn ? .black : .white.opacity(0.85))
+                .lineLimit(1)
+                .padding(.horizontal, 14)
+                .frame(height: 32)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(isOn ? Color.lumaAccent : Color.white.opacity(0.08))
+                )
+                .overlay(
+                    Capsule(style: .continuous)
+                        .strokeBorder(.white.opacity(isOn ? 0 : 0.12), lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+        .animation(.easeInOut(duration: 0.15), value: isOn)
+    }
+}
+
 // MARK: - Smart Playlist Detail
 
 /// Read-only track list for a smart playlist. Mirrors LikedSongsView's list, with a
 /// detail header + floating back button so it works pushed onto the Playlists stack.
+///
+/// Kinds with a `filterAxis` (most-played / liked / decade → genre; genre → decade) gain a
+/// horizontal filter rail. Filtering is done **in-memory over the already-fetched set**, so
+/// the chip options are exactly the genres/decades present in this list — no empty surprises,
+/// no extra SwiftData queries, and it works uniformly for every kind without a predicate per
+/// combination. Selection is multi-select (union) and resets when the view is left.
 struct SmartPlaylistDetailView: View {
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
     let kind: SmartPlaylistKind
     @Query private var tracks: [Track]
 
+    /// One selection store keyed by each chip's stable key (a genre string, or a decade as a
+    /// string). Folding both axes into a single set keeps the body's handling uniform — only
+    /// the active axis is ever populated. Resets when the view is left.
+    @State private var selectedKeys: Set<String> = []
+
     init(kind: SmartPlaylistKind) {
         self.kind = kind
         _tracks = Query(kind.descriptor)
     }
 
+    // MARK: Filter derivation
+
+    /// A filter chip: a stable key for selection plus its display label.
+    private struct FilterOption: Identifiable {
+        let key: String
+        let title: String
+        var id: String { key }
+    }
+
+    /// Distinct filter options present in the fetched set for this kind's axis — genres A→Z,
+    /// or decades newest-first; [] for kinds without an axis (so no scan happens). Called once
+    /// per body pass and the result is reused, so the set isn't re-derived on every read.
+    private func filterOptions(for axis: SmartFilterAxis?) -> [FilterOption] {
+        switch axis {
+        case .genre:
+            var set = Set<String>()
+            for t in tracks { if let g = t.lumaFilterGenre { set.insert(g) } }
+            return set.sorted(by: lumaTitleBefore).map { FilterOption(key: $0, title: $0) }
+        case .decade:
+            var set = Set<Int>()
+            for t in tracks { if let d = t.lumaFilterDecade { set.insert(d) } }
+            return set.sorted(by: >).map { FilterOption(key: String($0), title: lumaDecadeLabel($0)) }
+        case .none:
+            return []
+        }
+    }
+
+    /// The track's value on the active axis, as the same key the options use.
+    private func filterKey(_ t: Track, axis: SmartFilterAxis?) -> String? {
+        switch axis {
+        case .genre:  return t.lumaFilterGenre
+        case .decade: return t.lumaFilterDecade.map { String($0) }
+        case .none:   return nil
+        }
+    }
+
     var body: some View {
+        let axis = kind.filterAxis
+        let options = filterOptions(for: axis)
+        let optionKeys = options.map(\.key)
+        let shown: [Track] = selectedKeys.isEmpty
+            ? tracks
+            : tracks.filter { filterKey($0, axis: axis).map(selectedKeys.contains) ?? false }
+        let activeTitles = options.filter { selectedKeys.contains($0.key) }.map(\.title)
+
         ZStack(alignment: .topLeading) {
             Color.lumaBackground.ignoresSafeArea()
 
@@ -368,27 +503,46 @@ struct SmartPlaylistDetailView: View {
                 emptyState
             } else {
                 List {
-                    header
+                    header(count: shown.count, activeTitles: activeTitles)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 116, leading: 20, bottom: 6, trailing: 20))
-                    PlayShuffleHeader(tracks: tracks)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 14, trailing: 16))
-                    ForEach(tracks) { track in
-                        TrackRow(track: track, showArtwork: true, showsMenu: true,
-                                 isCurrent: track.id == app.player.currentTrack?.id,
-                                 isPlaying: app.player.state.isPlaying, liked: track.isLiked) { play(track) }
-                            .equatable()
-                            .frame(minHeight: 56)
+                    if options.count >= 2 {
+                        filterRail(options)
                             .listRowBackground(Color.clear)
-                            .trackRowSeparator()
-                            .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                            .trackQueueSwipeTrailing(
-                                playNext: { app.queue.playNext([track]) },
-                                addLast: { app.queue.append([track]) }
-                            )
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 8, trailing: 0))
+                    }
+                    if shown.isEmpty {
+                        // Only reachable transiently — the filter options are derived from this
+                        // very set, so clicking chips can't empty it; but if the library mutates
+                        // under an active selection, keep the rail usable instead of a blank list.
+                        Text("Keine Titel für diese Auswahl")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white.opacity(0.4))
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 40, leading: 20, bottom: 20, trailing: 20))
+                    } else {
+                        PlayShuffleHeader(tracks: shown)
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 14, trailing: 16))
+                        ForEach(shown) { track in
+                            TrackRow(track: track, showArtwork: true, showsMenu: true,
+                                     isCurrent: track.id == app.player.currentTrack?.id,
+                                     isPlaying: app.player.state.isPlaying, liked: track.isLiked) { play(track, in: shown) }
+                                .equatable()
+                                .frame(minHeight: 56)
+                                .listRowBackground(Color.clear)
+                                .trackRowSeparator()
+                                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                                .trackQueueSwipeTrailing(
+                                    playNext: { app.queue.playNext([track]) },
+                                    addLast: { app.queue.append([track]) }
+                                )
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -411,18 +565,52 @@ struct SmartPlaylistDetailView: View {
         .lumaHideBackButton()
         .interactiveSwipeBack()
         .background(Color.lumaBackground.ignoresSafeArea())
+        // If the library changes under us, drop any selection whose chip has vanished so the
+        // filter can't stick on an option that's no longer offered. Driven off the keys we
+        // already computed above (no extra scan); only the active axis ever has selections.
+        .onChange(of: optionKeys) { _, keys in
+            if !selectedKeys.isEmpty { selectedKeys.formIntersection(Set(keys)) }
+        }
     }
 
-    private var header: some View {
+    // MARK: Filter rail
+
+    private func filterRail(_ options: [FilterOption]) -> some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                LumaFilterChip(title: String(localized: "Alle"), isOn: selectedKeys.isEmpty) { clearFilter() }
+                ForEach(options) { opt in
+                    LumaFilterChip(title: opt.title, isOn: selectedKeys.contains(opt.key)) { toggle(opt.key) }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func clearFilter() {
+        withAnimation(.easeInOut(duration: 0.2)) { selectedKeys.removeAll() }
+    }
+    private func toggle(_ key: String) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            if selectedKeys.contains(key) { selectedKeys.remove(key) } else { selectedKeys.insert(key) }
+        }
+    }
+
+    // MARK: Header / empty / play
+
+    private func header(count: Int, activeTitles: [String]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(kind.title)
                 .font(.system(size: 28, weight: .bold))
                 .tracking(-0.5)
                 .foregroundStyle(.white)
                 .lineLimit(2)
-            Text(CountText.songs(tracks.count))
+            Text(activeTitles.isEmpty
+                 ? CountText.songs(count)
+                 : activeTitles.joined(separator: ", ") + " · " + CountText.songs(count))
                 .font(.system(size: 13))
                 .foregroundStyle(.white.opacity(0.4))
+                .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -444,9 +632,9 @@ struct SmartPlaylistDetailView: View {
         .padding(.horizontal, 40)
     }
 
-    private func play(_ track: Track) {
-        guard let idx = tracks.firstIndex(where: { $0.id == track.id }) else { return }
-        app.queue.setQueue(tracks, startAt: idx)
+    private func play(_ track: Track, in list: [Track]) {
+        guard let idx = list.firstIndex(where: { $0.id == track.id }) else { return }
+        app.queue.setQueue(list, startAt: idx)
         Task { await app.player.play(track: track) }
     }
 }
@@ -512,7 +700,7 @@ struct SmartHubView: View {
                             .frame(minHeight: 54)
                         }
                         .buttonStyle(LumaRowStyle())
-                        LumaSeparator(leadingPad: 20)
+                        LumaSeparator(leadingPad: 0)
                     }
                 }
                 .padding(.top, 64)

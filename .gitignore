@@ -30,6 +30,7 @@ Package.resolved
 
 # Claude Code
 .claude/
+.mcp.json
 
 # macOS
 .DS_Store

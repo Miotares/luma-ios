@@ -117,6 +117,12 @@ final class LibraryRepository {
 
     func delete(track: Track) throws {
         let deletedID = track.id
+        // Tear down playback / drop this track from the queue FIRST, while it is still a live
+        // @Model. PlaybackQueue holds STRONG references to Track and its removeTrack()/snapshot()
+        // read `.id` off every queued element — doing this after context.delete(track) would
+        // dereference the just-invalidated instance and crash ("backing data could no longer be
+        // found"). This is what made deleting an album (or any queued track) crash.
+        onTrackDeleted?(deletedID)
         // Remove the imported on-disk copy so it doesn't orphan storage.
         if let fileName = track.localFileName {
             MediaStorage.delete(filename: fileName)
@@ -135,7 +141,6 @@ final class LibraryRepository {
         }
         context.delete(track)
         try context.save()
-        onTrackDeleted?(deletedID)
     }
 
     // MARK: - Stats

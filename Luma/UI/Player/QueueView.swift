@@ -20,39 +20,82 @@ struct QueueView: View {
     // MARK: - Header
 
     private var queueHeader: some View {
-        HStack(spacing: 12) {
-            Text("Warteschlange")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.white)
-            Spacer()
+        VStack(spacing: 16) {
+            HStack {
+                Text("Warteschlange")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(.white)
+                Spacer()
 
-            if !app.queue.items.isEmpty {
-                Button {
-                    app.queue.clear()
-                    app.player.stop()
-                    dismiss()
-                } label: {
-                    Text("Leeren")
-                        .font(.system(size: 15))
-                        .foregroundStyle(.red.opacity(0.85))
+                #if os(iOS)
+                Button { dismiss() } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: 30, height: 30)
+                        .background(Color.white.opacity(0.1), in: Circle())
                 }
                 .buttonStyle(.plain)
+                #endif
             }
 
-            #if os(iOS)
-            Button { dismiss() } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .frame(width: 30, height: 30)
-                    .background(Color.white.opacity(0.1), in: Circle())
+            if !app.queue.items.isEmpty {
+                HStack(spacing: 10) {
+                    // Destructive — red-tinted and deliberately narrower so it's hard to hit by mistake.
+                    queueActionButton(label: "Leeren", icon: "trash",
+                                      tint: Color.red.opacity(0.95),
+                                      fill: Color.red.opacity(0.14),
+                                      stroke: Color.red.opacity(0.22)) {
+                        app.queue.clear()
+                        app.player.stop()
+                        dismiss()
+                    }
+                    .frame(width: 120)
+
+                    // Main, safe action — fills the remaining width.
+                    queueActionButton(label: "Neu ordnen", icon: "shuffle",
+                                      tint: .white,
+                                      fill: Color.white.opacity(0.1),
+                                      stroke: Color.white.opacity(0.14)) {
+                        reshuffleQueue()
+                    }
+                    .disabled(upNext.count < 2)
+                    .opacity(upNext.count < 2 ? 0.4 : 1)
+                    .accessibilityLabel("Warteschlange neu ordnen")
+                }
             }
-            .buttonStyle(.plain)
-            #endif
         }
         .padding(.horizontal, 20)
         .padding(.top, 30)
         .padding(.bottom, 14)
+    }
+
+    /// One of the large queue actions (Neu ordnen / Leeren), styled like the Abspielen/Shuffle
+    /// pills on album & playlist headers: 48-pt tall, rounded, icon + label.
+    private func queueActionButton(
+        label: LocalizedStringKey,
+        icon: String,
+        tint: Color,
+        fill: Color,
+        stroke: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(label, systemImage: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .tracking(-0.25)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(fill)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(stroke, lineWidth: 0.5)
+                }
+                .foregroundStyle(tint)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - List
@@ -80,27 +123,33 @@ struct QueueView: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                 } else {
-                    ForEach(Array(upNext.enumerated()), id: \.element.id) { offset, track in
-                        let queueIndex = app.queue.currentIndex + 1 + offset
-                        TrackRow(track: track, showArtwork: true, showsMenu: true,
-                                 isCurrent: track.id == app.player.currentTrack?.id,
+                    // A binding + `editActions: .move` gives drag-to-reorder (long-press & drag)
+                    // WITHOUT putting the List into edit mode — and edit mode is exactly what
+                    // suppresses `.swipeActions`. This is what lets reordering and swipe-to-remove
+                    // coexist; forcing edit mode for the old grip-drag killed the swipe.
+                    ForEach(upNextBinding, id: \.id, editActions: .move) { $track in
+                        TrackRow(track: track, showArtwork: true, showsMenu: false,
+                                 showsDragHandle: true,
+                                 isCurrent: false,
                                  isPlaying: app.player.state.isPlaying, liked: track.isLiked) {
-                            Task { await app.queue.play(at: queueIndex) }
+                            Task { await app.queue.play(track) }
                         }
                         .equatable()
                         .frame(minHeight: 56)   // taller rows → easier to grab & drag-reorder
                         .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 12))
-                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                        .trackRowSeparator()    // hairline between songs, like every other list
+                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                        // Swipe right-to-left to drop the track from the queue. Tint forced red —
+                        // the app's white accent would otherwise leave the button white-on-white.
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button(role: .destructive) {
-                                removeTrack(at: queueIndex)
+                                removeFromQueue(track)
                             } label: {
                                 Label("Entfernen", systemImage: "minus.circle")
                             }
+                            .tint(.red)
                         }
                     }
-                    .onMove(perform: moveTracks)
                 }
             } header: {
                 if !upNext.isEmpty { sectionHeader("ALS NÄCHSTES") }
@@ -108,7 +157,6 @@ struct QueueView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .queueEditMode(true)
     }
 
     private func sectionHeader(_ title: LocalizedStringKey) -> some View {
@@ -154,28 +202,32 @@ struct QueueView: View {
 
     // MARK: - Reorder / Delete
 
-    private func moveTracks(from source: IndexSet, to destination: Int) {
-        let base = app.queue.currentIndex + 1
-        let queueSource = IndexSet(source.map { base + $0 })
-        let queueDestination = base + destination
-        app.queue.move(from: queueSource, to: queueDestination)
+    /// Re-mixes the upcoming tracks into a fresh random order, animating the rows into place,
+    /// then persists the new order so it survives a relaunch. A haptic confirms the tap on iOS.
+    private func reshuffleQueue() {
+        withAnimation(.easeInOut(duration: 0.3)) {
+            app.queue.reshuffle()
+        }
+        app.savePlaybackState()
+        queueActionHaptic()
     }
 
-    private func removeTrack(at queueIndex: Int) {
-        app.queue.remove(at: IndexSet(integer: queueIndex))
+    /// Binds the up-next tracks so SwiftUI's `editActions` reordering can rewrite their order
+    /// directly; the setter funnels the new order back through the queue (current track + history
+    /// stay fixed) and persists it.
+    private var upNextBinding: Binding<[Track]> {
+        Binding(
+            get: { app.queue.upNext },
+            set: { newOrder in
+                app.queue.replaceUpNext(with: newOrder)
+                app.savePlaybackState()
+            }
+        )
     }
-}
 
-private extension View {
-    /// Drives List edit mode from a Bool on platforms that have `EditMode`
-    /// (iOS/iPadOS/visionOS). macOS Lists reorder via `.onMove` without it.
-    @ViewBuilder
-    func queueEditMode(_ editing: Bool) -> some View {
-        #if os(iOS) || os(visionOS)
-        environment(\.editMode, .constant(editing ? .active : .inactive))
-        #else
-        self
-        #endif
+    private func removeFromQueue(_ track: Track) {
+        app.queue.removeTrack(id: track.id)
+        app.savePlaybackState()
     }
 }
 

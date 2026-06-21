@@ -217,7 +217,7 @@ struct LibraryView: View {
     private var pinnedSection: some View {
         let map = validEntryTrackMap(allTracks)
         return VStack(alignment: .leading, spacing: 0) {
-            Text("Angeheftet")
+            Text("Playlists")
                 .font(.system(size: 20, weight: .bold))
                 .tracking(-0.35)
                 .foregroundStyle(.white)

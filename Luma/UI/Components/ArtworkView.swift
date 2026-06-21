@@ -51,18 +51,26 @@ struct ArtworkView: View {
     }
 
     var body: some View {
-        Group {
-            if let image {
-                image
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                placeholder
+        // A neutral Color.clear — NOT the image — defines this view's layout size, so the
+        // box is exactly `size`×`size` (or, when size == nil, exactly the square the parent
+        // proposes via `.aspectRatio(1, .fit)`). The cover is rendered as a clipped overlay:
+        // `scaledToFill` reports a NON-square size for a not-perfectly-square cover, and if
+        // that drove layout (as it did when the image was the primary view) the box width
+        // drifted per album — visibly resizing the full-screen player and nudging its
+        // controls apart on every cross-album song switch.
+        Color.clear
+            .frame(width: size, height: size)
+            .overlay {
+                if let image {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    placeholder
+                }
             }
-        }
-        .frame(width: size, height: size)
-        .clipped()
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipped()
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         // Resolve off the row-build path: check the image cache by the cheap key; only call the
         // data provider (which may fault the SwiftData blob) on a miss, then DECODE AT THE
         // DISPLAY SIZE off-main. Decoding the full ~1024px cover for a 44pt row saturated the CPU

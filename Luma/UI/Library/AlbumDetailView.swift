@@ -10,6 +10,9 @@ struct AlbumDetailView: View {
     @State private var navArtist: ArtistRoute?
     @State private var showingAlbumEditor = false
     @State private var showingDeleteConfirm = false
+    /// Set when the user confirms deletion; the album is actually removed in onDisappear,
+    /// once this view (which reads album.artworkData / album.tracks) is off screen.
+    @State private var pendingDeletion = false
 
     @State private var isSelecting = false
     @State private var selection: Set<UUID> = []
@@ -115,11 +118,20 @@ struct AlbumDetailView: View {
         .alert("Album löschen?", isPresented: $showingDeleteConfirm) {
             Button("Abbrechen", role: .cancel) {}
             Button("Löschen", role: .destructive) {
-                try? app.library.removeAlbum(album)
+                // Don't delete inline: this view's body reads album.artworkData (externalStorage)
+                // and album.sortedTracks/tracks. Deleting now — even after dismiss() — lets the
+                // save republish @Query and re-evaluate this view's body WHILE it is still mounted
+                // during the pop transition, faulting the just-deleted Album (crash). Instead flag
+                // it and pop; the actual removeAlbum runs in onDisappear, once we're fully gone.
+                pendingDeletion = true
                 dismiss()
             }
         } message: {
             Text("\"\(album.title)\" und alle \(album.tracks.count) Titel werden entfernt.")
+        }
+        .onDisappear {
+            guard pendingDeletion else { return }
+            try? app.library.removeAlbum(album)
         }
     }
 

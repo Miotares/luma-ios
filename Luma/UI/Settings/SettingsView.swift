@@ -28,7 +28,6 @@ struct SettingsView: View {
 
     private var totalDuration: TimeInterval { tracks.reduce(0) { $0 + $1.duration } }
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—" }
-    private var buildNumber: String { Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—" }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -120,13 +119,13 @@ struct SettingsView: View {
     private var statsBlock: some View {
         VStack(spacing: 0) {
             infoRow("Songs", value: "\(tracks.count)")
-            LumaSeparator(leadingPad: 20)
+            LumaSeparator(leadingPad: 0)
             infoRow("Alben", value: "\(albums.count)")
-            LumaSeparator(leadingPad: 20)
+            LumaSeparator(leadingPad: 0)
             infoRow("Künstler", value: "\(artists.count)")
-            LumaSeparator(leadingPad: 20)
+            LumaSeparator(leadingPad: 0)
             infoRow("Playlists", value: "\(playlists.count)")
-            LumaSeparator(leadingPad: 20)
+            LumaSeparator(leadingPad: 0)
             infoRow("Gesamtdauer", value: DurationText.hoursMinutes(totalDuration))
         }
         .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -136,7 +135,7 @@ struct SettingsView: View {
     private var storageBlock: some View {
         VStack(spacing: 0) {
             infoRow("Belegter Speicher", value: ByteCountFormatter.string(fromByteCount: storageBytes, countStyle: .file))
-            LumaSeparator(leadingPad: 20)
+            LumaSeparator(leadingPad: 0)
             Toggle(isOn: $backupEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Im iCloud-Backup sichern")
@@ -318,8 +317,6 @@ struct SettingsView: View {
     private var appBlock: some View {
         VStack(spacing: 0) {
             infoRow("Version", value: appVersion)
-            LumaSeparator(leadingPad: 20)
-            infoRow("Build", value: buildNumber)
         }
         .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal, 16)
@@ -431,15 +428,29 @@ extension SettingsView {
         .buttonStyle(.plain)
     }
 
-    /// Switches the home-screen icon. iOS itself shows the confirmation alert; we only
-    /// mirror the result back into the selection state.
+    /// Switches the home-screen icon. The public `setAlternateIconName` always presents a
+    /// system alert ("Du hast das Symbol … geändert.") whose layout we can't control — icon
+    /// flush-left, text flush-right. We switch silently instead and let the selected tile be
+    /// the confirmation. Falls back to the public API if the silent setter is unavailable.
     func setAppIcon(_ name: String?) {
         let application = UIApplication.shared
         guard application.supportsAlternateIcons, application.alternateIconName != name else { return }
-        application.setAlternateIconName(name) { error in
+
+        let completion: (Error?) -> Void = { error in
             Task { @MainActor in
                 currentIconName = (error == nil) ? name : application.alternateIconName
             }
+        }
+
+        // `_setAlternateIconName:completionHandler:` is the same switch without the alert.
+        let silentSelector = NSSelectorFromString("_setAlternateIconName:completionHandler:")
+        if application.responds(to: silentSelector) {
+            typealias SilentSetter = @convention(c) (NSObject, Selector, NSString?, @escaping (Error?) -> Void) -> Void
+            let imp = application.method(for: silentSelector)
+            let setter = unsafeBitCast(imp, to: SilentSetter.self)
+            setter(application, silentSelector, name as NSString?, completion)
+        } else {
+            application.setAlternateIconName(name, completionHandler: completion)
         }
     }
 }

@@ -69,7 +69,7 @@ struct HomeSettingsView: View {
                                     .frame(minHeight: 50)
                                 }
                                 .buttonStyle(LumaRowStyle())
-                                if index < playlists.count - 1 { LumaSeparator(leadingPad: 20) }
+                                if index < playlists.count - 1 { LumaSeparator(leadingPad: 0) }
                             }
                         }
                         .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))

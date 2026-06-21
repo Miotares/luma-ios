@@ -7,6 +7,10 @@ struct TrackRow: View, Equatable {
     var showArtistName: Bool = true
     var showAlbum: Bool = false
     var showsMenu: Bool = false
+    /// Shows a trailing drag-handle glyph (≡) that hints the row can be dragged to reorder.
+    /// Purely a visual affordance — the actual reordering is driven by the List's `editActions`,
+    /// which makes the whole row draggable (so grabbing the handle works too).
+    var showsDragHandle: Bool = false
     /// When true the row shows a leading selection circle and its tap is expected to
     /// toggle membership (the parent owns the actual selection set). Other affordances
     /// (trailing menu, context menu) are suppressed by the caller while selecting.
@@ -39,26 +43,23 @@ struct TrackRow: View, Equatable {
         l.isCurrent == r.isCurrent && l.isPlaying == r.isPlaying && l.liked == r.liked &&
         l.selectionMode == r.selectionMode && l.isSelected == r.isSelected &&
         l.showArtwork == r.showArtwork && l.showAlbum == r.showAlbum &&
-        l.showArtistName == r.showArtistName && l.showsMenu == r.showsMenu
+        l.showArtistName == r.showArtistName && l.showsMenu == r.showsMenu &&
+        l.showsDragHandle == r.showsDragHandle
     }
 
     var body: some View {
         let isCurrentTrack = isCurrent
 
         HStack(spacing: 4) {
-            #if os(macOS)
-            // A Button inside a List on macOS often needs the list focused before its
-            // first click registers; a plain tap gesture fires immediately.
+            // A plain tap gesture rather than a Button: TapGesture cancels the moment the
+            // finger moves, so a swipe-to-remove attempt that falls short of the swipe
+            // threshold no longer fires as a tap on finger-up (which wrongly started playback
+            // in the always-edit-mode queue). A Button's looser touch slop let that through.
+            // It also sidesteps the macOS "first click needs the list focused" Button quirk.
             rowLabel(isCurrentTrack: isCurrentTrack)
                 .contentShape(Rectangle())
                 .onTapGesture { onTap?() }
-            #else
-            Button { onTap?() } label: {
-                rowLabel(isCurrentTrack: isCurrentTrack)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            #endif
+                .accessibilityAddTraits(.isButton)
 
             if showsMenu {
                 Menu {
@@ -71,6 +72,14 @@ struct TrackRow: View, Equatable {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+            }
+
+            if showsDragHandle {
+                Image(systemName: "line.3.horizontal")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.3))
+                    .frame(width: 28, height: 44)
+                    .accessibilityHidden(true)
             }
         }
         .padding(.horizontal, isCurrentTrack ? 8 : 0)

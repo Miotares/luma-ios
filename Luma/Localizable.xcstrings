@@ -461,6 +461,7 @@
       }
     },
     "Angeheftet" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -621,6 +622,7 @@
       }
     },
     "Build" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -871,6 +873,7 @@
       }
     },
     "Halte eine Liste gedrückt und ziehe sie, um die Reihenfolge zu ändern." : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1096,6 +1099,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "No songs"
+          }
+        }
+      }
+    },
+    "Keine Titel für diese Auswahl" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No tracks for this filter"
           }
         }
       }
@@ -1331,6 +1344,9 @@
           }
         }
       }
+    },
+    "Neu ordnen" : {
+
     },
     "Neue Playlist" : {
       "localizations" : {
@@ -1883,6 +1899,9 @@
           }
         }
       }
+    },
+    "Warteschlange neu ordnen" : {
+
     },
     "Welcher Tab beim Öffnen der App angezeigt wird." : {
       "localizations" : {
