@@ -45,45 +45,46 @@ enum SmartPlaylistKind: Hashable {
     /// Bounded fetch (like LibraryView.recentTracksDescriptor) so a smart list never
     /// scans the whole tracks table on the rolling sections.
     var descriptor: FetchDescriptor<Track> {
+        // All these feed TrackRows, so prefetch `album` to avoid per-row main-thread faults.
+        var d: FetchDescriptor<Track>
         switch self {
         case .mostPlayed:
-            var d = FetchDescriptor<Track>(
+            d = FetchDescriptor<Track>(
                 predicate: #Predicate { $0.playCount > 0 },
                 sortBy: [SortDescriptor(\.playCount, order: .reverse)]
             )
             d.fetchLimit = 100
-            return d
         case .recentlyPlayed:
-            var d = FetchDescriptor<Track>(
+            d = FetchDescriptor<Track>(
                 predicate: #Predicate { $0.lastPlayedDate != nil },
                 sortBy: [SortDescriptor(\.lastPlayedDate, order: .reverse)]
             )
             d.fetchLimit = 100
-            return d
         case .recentlyAdded:
-            var d = FetchDescriptor<Track>(sortBy: [SortDescriptor(\.addedDate, order: .reverse)])
+            d = FetchDescriptor<Track>(sortBy: [SortDescriptor(\.addedDate, order: .reverse)])
             d.fetchLimit = 100
-            return d
         case .liked:
-            return FetchDescriptor<Track>(
+            d = FetchDescriptor<Track>(
                 predicate: #Predicate { $0.isLiked == true },
                 sortBy: [SortDescriptor(\.title)]
             )
         case .genre(let g):
-            return FetchDescriptor<Track>(
+            d = FetchDescriptor<Track>(
                 predicate: #Predicate { $0.genre == g },
                 sortBy: [SortDescriptor(\.artistName), SortDescriptor(\.albumTitle),
                          SortDescriptor(\.discNumber), SortDescriptor(\.trackNumber)]
             )
-        case .decade(let d):
-            let lo = d
-            let hi = d + 9
-            return FetchDescriptor<Track>(
+        case .decade(let dec):
+            let lo = dec
+            let hi = dec + 9
+            d = FetchDescriptor<Track>(
                 predicate: #Predicate { ($0.year ?? -1) >= lo && ($0.year ?? -1) <= hi },
                 sortBy: [SortDescriptor(\.year), SortDescriptor(\.artistName),
                          SortDescriptor(\.albumTitle), SortDescriptor(\.trackNumber)]
             )
         }
+        d.relationshipKeyPathsForPrefetching = [\.album]
+        return d
     }
 }
 
@@ -376,7 +377,10 @@ struct SmartPlaylistDetailView: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 14, trailing: 16))
                     ForEach(tracks) { track in
-                        TrackRow(track: track, showArtwork: true, showsMenu: true) { play(track) }
+                        TrackRow(track: track, showArtwork: true, showsMenu: true,
+                                 isCurrent: track.id == app.player.currentTrack?.id,
+                                 isPlaying: app.player.state.isPlaying, liked: track.isLiked) { play(track) }
+                            .equatable()
                             .frame(minHeight: 56)
                             .listRowBackground(Color.clear)
                             .trackRowSeparator()
@@ -392,7 +396,7 @@ struct SmartPlaylistDetailView: View {
                 #if os(iOS) || os(visionOS)
                 .ignoresSafeArea(.container, edges: .top)
                 #endif
-                .lumaScrollClearance(playerActive: app.player.state.isActive)
+                .lumaScrollClearance(playerActive: app.player.isActive)
             }
 
             HStack {
@@ -514,7 +518,7 @@ struct SmartHubView: View {
                 .padding(.top, 64)
                 .padding(.bottom, 20)
             }
-            .lumaScrollClearance(playerActive: app.player.state.isActive)
+            .lumaScrollClearance(playerActive: app.player.isActive)
 
             HStack {
                 LumaBackButton { dismiss() }

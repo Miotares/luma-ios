@@ -20,17 +20,28 @@ final class LibraryRepository {
     func recordPlay(track: Track) throws {
         track.playCount += 1
         track.lastPlayedDate = Date()
-        // Defer the save off the current frame — these stats writes invalidate the library
-        // @Query views, so saving inline stalled playback/track-change interactions.
-        Task { @MainActor in try? self.context.save() }
+        // NO save here. The main context has autosave DISABLED (see AppContainer), so these
+        // high-frequency playback-stat writes stay pending in memory and are flushed together
+        // by `saveStats()` at a lifecycle boundary (pause/stop/background). Saving per-play
+        // republished every live @Query mid-playback — the invalidation storm that made the
+        // library mushy while scrolling and kept the phone busy during background playback.
+        // Pending changes are still visible to same-context fetches, so smart playlists update.
     }
 
-    /// Adds actually-listened seconds to a track (called by the player in ~5s batches,
-    /// so partial/skipped plays still count toward listening statistics).
+    /// Adds actually-listened seconds to a track (the player accumulates in memory and flushes
+    /// at track boundaries / pause / background, so partial/skipped plays still count).
     func addListenTime(to track: Track, seconds: TimeInterval) {
         guard seconds > 0 else { return }
         track.listenSeconds += seconds
-        Task { @MainActor in try? self.context.save() }
+        // NO save here — coalesced into `saveStats()` at a lifecycle boundary. See recordPlay.
+    }
+
+    /// Persists any pending in-memory mutations (playback stats accumulated during playback).
+    /// Called when leaving the foreground / on pause / stop so a background or kill keeps the
+    /// stats, WITHOUT saving on every play/listen tick (which republishes every live @Query).
+    func saveStats() {
+        guard context.hasChanges else { return }
+        try? context.save()
     }
 
     private static let didSeedListenKey = "didSeedListenSeconds_v1"
@@ -65,10 +76,11 @@ final class LibraryRepository {
 
     func toggleLike(track: Track) throws {
         track.isLiked.toggle()
-        // Persist off the tap's frame — a synchronous save can stall the frame that
-        // flips the heart, making the like feel delayed. The `isLiked` change above is
-        // already observable; the save just follows on the next main-actor turn. Self is
-        // @MainActor, so the context never leaves the main actor.
+        // Unlike play/listen stats, a like MUST save explicitly: autosave is off, and the
+        // Liked tab (`LikedSongsView`'s isLiked @Query) has to update + persist immediately.
+        // Deferred to the next main-actor turn so the heart flips instantly without the save
+        // (and its @Query refresh) stalling the tap frame. recordPlay/addListenTime instead
+        // coalesce into saveStats() — a like is a deliberate, infrequent action.
         Task { @MainActor in try? self.context.save() }
     }
 

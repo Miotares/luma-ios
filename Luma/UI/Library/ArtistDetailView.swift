@@ -26,9 +26,12 @@ struct ArtistDetailView: View {
                     .listRowInsets(EdgeInsets(top: 20, leading: 20, bottom: 4, trailing: 16))
 
                     ForEach(album.sortedTracks) { track in
-                        TrackRow(track: track, showArtistName: false, showsMenu: true) {
+                        TrackRow(track: track, showArtistName: false, showsMenu: true,
+                                 isCurrent: track.id == app.player.currentTrack?.id,
+                                 isPlaying: app.player.state.isPlaying, liked: track.isLiked) {
                             play(track: track, album: album)
                         }
+                        .equatable()
                         .frame(minHeight: 54)
                         .listRowBackground(Color.clear)
                         .trackRowSeparator()
@@ -44,7 +47,7 @@ struct ArtistDetailView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .ignoresSafeArea(.container, edges: .top)
-            .lumaScrollClearance(playerActive: app.player.state.isActive)
+            .lumaScrollClearance(playerActive: app.player.isActive)
 
             LumaBackButton { dismiss() }
                 .padding(.leading, 18)

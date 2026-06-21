@@ -16,6 +16,32 @@ func validEntryTrackMap(_ allTracks: [Track]) -> [PersistentIdentifier: Track] {
     return map
 }
 
+/// A `Track` fetch that PREFETCHES the relationships every track row touches, in one batched
+/// query each, instead of faulting them ON THE MAIN THREAD once PER TRACK:
+///   • `album`  — every `TrackRow` reads `track.album?.id` for the artwork cache key; scrolling
+///                 1500 rows otherwise = 1500 individual SQLite reads → stutter at ~0% CPU
+///                 (the thread is *waiting on disk*, not computing).
+///   • `playlistEntries` — `validEntryTrackMap` walks these for every track; without prefetch
+///                 that fault-storm fired on every tab switch / play-state flip (always-mounted
+///                 PlaylistsView), the multi-second UI stalls where the UI lagged the audio.
+/// Prefetching turns both into single batched loads, so building rows / the map is a fast
+/// in-memory pass. `artworkData` is `.externalStorage`, so prefetching `album` does NOT pull
+/// the cover blobs — only the small Album rows.
+func tracksRowDescriptor(sortByTitle: Bool = false, prefetchEntries: Bool = true) -> FetchDescriptor<Track> {
+    var d = FetchDescriptor<Track>(sortBy: sortByTitle ? [SortDescriptor(\.title)] : [])
+    d.relationshipKeyPathsForPrefetching = prefetchEntries ? [\.album, \.playlistEntries] : [\.album]
+    return d
+}
+
+/// Artist fetch that prefetches `albums` + `tracks`, which every `ArtistListRow` reads
+/// (`sortedAlbums.first?.artworkData`, `albumCount`, `trackCount`) — otherwise each artist row
+/// faults two relationships from SQLite on the main thread while scrolling the Artists list.
+func artistsRowDescriptor() -> FetchDescriptor<Artist> {
+    var d = FetchDescriptor<Artist>(sortBy: [SortDescriptor(\.name)])
+    d.relationshipKeyPathsForPrefetching = [\.albums, \.tracks]
+    return d
+}
+
 extension Playlist {
     func safeSortedTracks(using map: [PersistentIdentifier: Track]) -> [Track] {
         entries
@@ -27,7 +53,7 @@ extension Playlist {
 struct PlaylistsView: View {
     @Environment(AppContainer.self) private var app
     @Query(sort: \Playlist.sortIndex) private var playlists: [Playlist]
-    @Query private var allTracks: [Track]
+    @Query(tracksRowDescriptor()) private var allTracks: [Track]
     @State private var showingCreate = false
     @State private var newPlaylistName = ""
     @State private var isReordering = false
@@ -213,7 +239,7 @@ struct PlaylistsView: View {
                 }
                 .padding(.bottom, 20)
             }
-            .lumaScrollClearance(playerActive: app.player.state.isActive)
+            .lumaScrollClearance(playerActive: app.player.isActive)
         }
     }
 
@@ -246,7 +272,7 @@ struct PlaylistsView: View {
         #if os(iOS) || os(visionOS)
         .environment(\.editMode, .constant(.active))
         #endif
-        .lumaScrollClearance(playerActive: app.player.state.isActive)
+        .lumaScrollClearance(playerActive: app.player.isActive)
     }
 
     private func movePlaylists(from source: IndexSet, to destination: Int) {
@@ -307,43 +333,45 @@ struct PlaylistArtworkView: View {
     let tracks: [Track]
     var cornerRadius: CGFloat = 14
 
-    /// Covers from the first four DISTINCT albums, in playlist order. De-duplicates by
-    /// album identity (not by artwork bytes) so four songs from the same album no longer
-    /// repeat the same tile. Tracks without artwork are skipped; falls back to the single
-    /// first cover when fewer than four distinct-album covers exist.
-    private var artworks: [(key: String, data: Data)] {
-        var result: [(key: String, data: Data)] = []
+    /// The first four DISTINCT albums in playlist order, de-duplicated by album identity (not
+    /// artwork bytes) so four songs from the same album don't repeat a tile. Crucially this
+    /// touches only the (cheap, externalStorage-free) Album rows — it does NOT read
+    /// `artworkData` here. The multi-MB blob is faulted lazily by ArtworkView's autoclosure,
+    /// only on a cache miss and off the card-build/scroll frame. (Reading the blob eagerly here
+    /// faulted it on the main thread for every card as it scrolled into view.)
+    private var coverAlbums: [Album] {
+        var result: [Album] = []
         var seenAlbums = Set<PersistentIdentifier>()
         for track in tracks {
-            guard let album = track.album, let data = album.artworkData else { continue }
+            guard let album = track.album else { continue }
             guard seenAlbums.insert(album.persistentModelID).inserted else { continue }
-            result.append((album.id.uuidString, data))
+            result.append(album)
             if result.count == 4 { break }
         }
         return result
     }
 
     var body: some View {
-        let arts = artworks
+        let albums = coverAlbums
         Group {
-            if arts.count >= 4 {
+            if albums.count >= 4 {
                 GeometryReader { geo in
                     let half = (geo.size.width - 2) / 2
                     VStack(spacing: 2) {
                         HStack(spacing: 2) {
-                            ArtworkView(data: arts[0].data, cacheKey: arts[0].key, cornerRadius: 0, size: half)
-                            ArtworkView(data: arts[1].data, cacheKey: arts[1].key, cornerRadius: 0, size: half)
+                            ArtworkView(data: albums[0].artworkData, cacheKey: albums[0].id.uuidString, cornerRadius: 0, size: half)
+                            ArtworkView(data: albums[1].artworkData, cacheKey: albums[1].id.uuidString, cornerRadius: 0, size: half)
                         }
                         HStack(spacing: 2) {
-                            ArtworkView(data: arts[2].data, cacheKey: arts[2].key, cornerRadius: 0, size: half)
-                            ArtworkView(data: arts[3].data, cacheKey: arts[3].key, cornerRadius: 0, size: half)
+                            ArtworkView(data: albums[2].artworkData, cacheKey: albums[2].id.uuidString, cornerRadius: 0, size: half)
+                            ArtworkView(data: albums[3].artworkData, cacheKey: albums[3].id.uuidString, cornerRadius: 0, size: half)
                         }
                     }
                 }
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             } else {
-                ArtworkView(data: arts.first?.data, cacheKey: arts.first?.key, cornerRadius: cornerRadius, size: nil)
+                ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.id.uuidString, cornerRadius: cornerRadius, size: nil)
                     .aspectRatio(1, contentMode: .fit)
             }
         }

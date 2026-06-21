@@ -72,7 +72,7 @@ struct MainTabView: View {
     @State private var settingsPath = NavigationPath()
     @State private var libraryResetSignal = 0
 
-    private var miniPlayerActive: Bool { app.player.state.isActive }
+    private var miniPlayerActive: Bool { app.player.isActive }
 
     /// Tapping the already-selected tab pops it to root; on Mediathek it also resets
     /// the filter back to "Alben".

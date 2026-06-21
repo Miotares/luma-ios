@@ -1,5 +1,7 @@
 import Foundation
 import MediaPlayer
+import ImageIO
+import CoreGraphics
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -53,15 +55,36 @@ final class NowPlayingManager {
         center.playbackState = .stopped
     }
 
-    private func makeArtwork(from data: Data) -> MPMediaItemArtwork? {
+    /// Builds the lock-screen artwork WITHOUT decoding the cover here. The request handler is
+    /// called by MediaPlayer (off the main thread) only when it actually needs the image, and
+    /// decodes a thumbnail at the requested size via ImageIO. Previously this did a full
+    /// `UIImage(data:)` (~1024px) decode ON THE MAIN ACTOR at every track change — a needless
+    /// main-thread hitch that, with scrolling cover decodes, helped delay starting playback.
+    private func makeArtwork(from data: Data) -> MPMediaItemArtwork {
+        // Covers are square; a nominal 600px bounds is a fine hint for the lock screen.
+        let bounds = CGSize(width: 600, height: 600)
         #if os(iOS) || os(visionOS)
-        guard let image = UIImage(data: data) else { return nil }
-        return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        return MPMediaItemArtwork(boundsSize: bounds) { size in
+            let px = max(64, Int(max(size.width, size.height).rounded(.up)))
+            if let cg = Self.thumbnailCGImage(from: data, maxPixel: px) { return UIImage(cgImage: cg) }
+            return UIImage()
+        }
         #elseif os(macOS)
-        guard let image = NSImage(data: data) else { return nil }
-        return MPMediaItemArtwork(boundsSize: image.size) { _ in image }
-        #else
-        return nil
+        return MPMediaItemArtwork(boundsSize: bounds) { size in
+            let px = max(64, Int(max(size.width, size.height).rounded(.up)))
+            if let cg = Self.thumbnailCGImage(from: data, maxPixel: px) { return NSImage(cgImage: cg, size: size) }
+            return NSImage(size: size)
+        }
         #endif
+    }
+
+    private static func thumbnailCGImage(from data: Data, maxPixel: Int) -> CGImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixel,
+        ] as CFDictionary)
     }
 }

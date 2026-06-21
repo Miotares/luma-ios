@@ -1,7 +1,7 @@
 import SwiftUI
 import SwiftData
 
-struct TrackRow: View {
+struct TrackRow: View, Equatable {
     let track: Track
     var showArtwork: Bool = false
     var showArtistName: Bool = true
@@ -12,6 +12,15 @@ struct TrackRow: View {
     /// (trailing menu, context menu) are suppressed by the caller while selecting.
     var selectionMode: Bool = false
     var isSelected: Bool = false
+    /// Playback-derived state, passed in by the parent (NOT read from `app.player` inside the
+    /// row). Reading the player here subscribed EVERY row to playback, so starting a track
+    /// re-ran all ~1500 row bodies (a multi-second freeze). With these as plain values + the
+    /// `Equatable` conformance below, `.equatable()` lets SwiftUI skip every row whose inputs
+    /// didn't change — so a track change re-renders only the 2 affected rows.
+    var isCurrent: Bool = false
+    var isPlaying: Bool = false
+    /// Snapshot of `track.isLiked` (a value, so Equatable can detect a like toggling).
+    var liked: Bool = false
     var onTap: (() -> Void)?
 
     @Environment(AppContainer.self) private var app
@@ -23,8 +32,18 @@ struct TrackRow: View {
     @State private var showDeleteConfirm = false
     @State private var isHovered = false
 
+    // Compared by `.equatable()` — closures and @State are intentionally excluded. Title/artist
+    // edits are rare and refresh on navigation; the keys here cover everything that changes live.
+    static func == (l: TrackRow, r: TrackRow) -> Bool {
+        l.track.persistentModelID == r.track.persistentModelID &&
+        l.isCurrent == r.isCurrent && l.isPlaying == r.isPlaying && l.liked == r.liked &&
+        l.selectionMode == r.selectionMode && l.isSelected == r.isSelected &&
+        l.showArtwork == r.showArtwork && l.showAlbum == r.showAlbum &&
+        l.showArtistName == r.showArtistName && l.showsMenu == r.showsMenu
+    }
+
     var body: some View {
-        let isCurrentTrack = track.id == app.player.currentTrack?.id
+        let isCurrentTrack = isCurrent
 
         HStack(spacing: 4) {
             #if os(macOS)
@@ -119,7 +138,7 @@ struct TrackRow: View {
 
             Spacer()
 
-            if track.isLiked {
+            if liked {
                 Image(systemName: "heart.fill")
                     .font(.caption)
                     .foregroundStyle(.white)
@@ -205,7 +224,7 @@ struct TrackRow: View {
                         .fill(.black.opacity(0.5))
                         .frame(width: 44, height: 44)
                     Image(systemName: "waveform")
-                        .symbolEffect(.variableColor.iterative, isActive: app.player.state.isPlaying)
+                        .symbolEffect(.variableColor.iterative, isActive: isPlaying)
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(.white)
                 }
@@ -214,7 +233,7 @@ struct TrackRow: View {
             Group {
                 if isCurrentTrack {
                     Image(systemName: "waveform")
-                        .symbolEffect(.variableColor.iterative, isActive: app.player.state.isPlaying)
+                        .symbolEffect(.variableColor.iterative, isActive: isPlaying)
                         .font(.system(size: 13))
                         .foregroundStyle(Color.lumaAccent)
                 } else {

@@ -23,6 +23,12 @@ final class AudioPlayer {
     /// after the Track is deleted from the store (used to tear down playback on delete).
     private(set) var currentTrackID: UUID?
     private(set) var state: PlaybackState = .stopped
+    /// Coarse "is there an active session" flag (playing OR paused), flipped ONLY on the
+    /// stopped↔active boundary. Views use THIS (not `state.isActive`) for the mini-player /
+    /// scroll-clearance: reading `state` makes a view re-evaluate on every play↔pause (state
+    /// changes but isActive doesn't), which re-ran every mounted tab body. `isActive` only
+    /// changes when it truly changes, so play/pause no longer churns the whole UI.
+    private(set) var isActive: Bool = false
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
     static let volumeDefaultsKey = "playerVolume"
@@ -58,6 +64,10 @@ final class AudioPlayer {
     /// Fired when the session state worth persisting changed — on pause/stop and on a ~5s
     /// throttle while playing — so the queue + play head can be saved for resume.
     var onPersist: (() -> Void)?
+    /// Fired at coalescing boundaries (pause/stop) so accumulated playback stats can be saved.
+    /// recordPlay/addListenTime only mutate in memory (autosave is off on the main context);
+    /// this is the cue to actually persist them — NOT on every tick, which would storm @Query.
+    var onStatsShouldPersist: (() -> Void)?
 
     /// Exposed so the equalizer can attach to the live AVAudioUnitEQ.
     var graph: LumaAudioGraph { engineGraph }
@@ -82,6 +92,11 @@ final class AudioPlayer {
     private var pendingAnchorSeconds: TimeInterval?   // re-anchor the clock once the node renders
     private var scheduleGeneration = 0                // stale-completion guard
     private var displayTimer: Timer?
+    /// Whether the app is in the foreground. While backgrounded, the display tick still runs
+    /// (it drives gapless preload / crossfade timing + listen accumulation) but does NOT publish
+    /// the observable `currentTime` — there is no visible scrubber, so the per-tick SwiftUI
+    /// invalidation is pure wasted main-thread work that contributes to background stutter.
+    private var isForeground = true
 
     // Gapless preload of the next track (scheduled back-to-back on the active node).
     private var preloadStarted = false
@@ -180,6 +195,7 @@ final class AudioPlayer {
         playRecorded = false
 
         schedule(decoded, track: track, on: node, from: clamped, generation: generation)
+        isActive = true   // stopped→active boundary (covers both autostart and restore-paused)
 
         if autostart {
             try? engineGraph.start()
@@ -208,6 +224,7 @@ final class AudioPlayer {
         parkedTime = currentTime
         stopDisplayTimer()
         flushListen()
+        onStatsShouldPersist?()   // persist coalesced play/listen stats on pause
         onPersist?()
         nowPlayingUpdate()
     }
@@ -231,19 +248,32 @@ final class AudioPlayer {
     /// `resume()` re-activates + restarts the engine, so it works unchanged afterwards.
     func enterBackground() {
         #if os(iOS) || os(visionOS)
+        // Stop publishing the (invisible) scrubber while backgrounded — set BEFORE the paused
+        // guard so it also applies while playing (normal background audio, the main case). Not
+        // touched on macOS, where an unfocused window stays visible and must keep its scrubber.
+        isForeground = false
         guard state == .paused else { return }
         engineGraph.pause()      // MUST precede deactivate() or the session throws "is busy"
         session.deactivate()
         #endif
     }
 
-    /// Returning to the foreground — refresh the now-playing info so the scrubber is fresh.
+    /// Returning to the foreground — re-publish the play head (kept advancing in `parkedTime`
+    /// while backgrounded) and refresh the now-playing info so the scrubber is fresh.
     func enterForeground() {
+        isForeground = true
+        if state == .playing { currentTime = parkedTime }
         nowPlayingUpdate()
     }
 
+    /// Flush any in-memory listened-seconds delta into the current track's stats (no save).
+    /// Used at a lifecycle boundary (backgrounding) so partial listening persists; the actual
+    /// context save is driven separately via `onStatsShouldPersist` / AppContainer.saveStats().
+    func flushPendingListen() { flushListen() }
+
     func stop() {
         flushListen()
+        onStatsShouldPersist?()   // persist coalesced play/listen stats on stop
         cancelSleepTimer()
         cancelCrossfade()
         stopDisplayTimer()
@@ -255,6 +285,7 @@ final class AudioPlayer {
         stopAccessingCurrentResource()
         currentTrack = nil
         state = .stopped
+        isActive = false   // active→stopped boundary (the only place state becomes .stopped)
         currentTime = 0
         duration = 0
         parkedTime = 0
@@ -372,6 +403,10 @@ final class AudioPlayer {
 
         if let next = preloadedNext {
             // Gapless: `next` is already playing back-to-back on the active node.
+            // Flush the finished track's listened seconds BEFORE reassigning currentTrack, or
+            // the pending delta would be lost (and mis-attributed to the next track). This is
+            // the only track-advance path that doesn't route through startPlayback's flush.
+            flushListen()
             q.advanceIndexForCrossfade()
             currentTrack = next.track
             currentDecoded = next.decoded
@@ -414,7 +449,10 @@ final class AudioPlayer {
         }
         let t = clock.seconds(on: activeNode, parked: parkedTime)
         let bounded = trackDuration > 0 ? min(t, trackDuration) : t
-        currentTime = bounded
+        // Only publish the observable play head while foregrounded — the scrubber isn't visible
+        // in the background, so skipping the write avoids 5×/sec SwiftUI invalidations there.
+        // `parkedTime` is always updated so enterForeground() / resume can show the right time.
+        if isForeground { currentTime = bounded }
         parkedTime = bounded
         accumulateListen(at: bounded)
         maybePersistProgress(at: bounded)
@@ -629,7 +667,10 @@ final class AudioPlayer {
             playRecorded = true
             onTrackPlayed?(track)
         }
-        if pendingListen >= 60 { flushListen() }
+        // No rolling mid-playback flush: pendingListen accumulates in memory and is flushed at
+        // a boundary (track change / pause / stop / background). The old 60s flush mutated the
+        // Track and (with autosave) republished every live @Query mid-playback — a periodic
+        // hitch while scrolling and wasted CPU during background playback.
     }
 
     /// Seconds of real listening before a track counts as "played": 30% of its length, so a
@@ -641,7 +682,10 @@ final class AudioPlayer {
 
     private func maybePersistProgress(at pos: TimeInterval) {
         guard state == .playing else { return }
-        if abs(pos - lastPersistPos) >= 5 {
+        // 20s (was 5s): onPersist snapshots the whole queue (maps every item id) on the main
+        // thread, and a shuffle-all of a large library is a few-thousand-element map each time.
+        // Resume granularity doesn't need 5s, and pause/stop/track-change still persist exactly.
+        if abs(pos - lastPersistPos) >= 20 {
             lastPersistPos = pos
             onPersist?()
         }

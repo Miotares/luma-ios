@@ -62,7 +62,7 @@ struct StatisticsView: View {
                 }
                 .padding(.bottom, 20)
             }
-            .lumaScrollClearance(playerActive: app.player.state.isActive)
+            .lumaScrollClearance(playerActive: app.player.isActive)
         }
         .lumaInlineNavTitle()
         .lumaHiddenNavBarBackground()

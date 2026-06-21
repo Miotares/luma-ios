@@ -29,6 +29,12 @@ final class AppContainer {
         self.equalizer = eq
         self.queue = q
         self.modelContext = modelContext
+        // Disable autosave on the UI-observed main context: otherwise every playback-stat
+        // mutation (playCount/listenSeconds) autosaves at the next runloop turn and republishes
+        // EVERY live @Query — the storm that made scrolling mushy and kept the phone busy during
+        // background playback. Stats are now coalesced and saved at lifecycle boundaries
+        // (saveStats); all OTHER mutations already save explicitly via LibraryRepository.
+        modelContext.autosaveEnabled = false
         self.importManager = ImportManager(modelContext: modelContext)
         let lib = LibraryRepository(context: modelContext)
         self.library = lib
@@ -71,6 +77,10 @@ final class AppContainer {
             lib.addListenTime(to: track, seconds: seconds)
         }
 
+        // The player coalesces stat writes (recordPlay/addListenTime mutate without saving);
+        // it asks us to persist them at safe boundaries (pause/stop), not on every tick.
+        p.onStatsShouldPersist = { lib.saveStats() }
+
         p.onTrackChanged = { [weak self] track in
             guard let self else { return }
             let artworkData = track.album?.artworkData
@@ -96,6 +106,14 @@ final class AppContainer {
     /// Snapshots the current queue + play head so the next launch can resume here.
     func savePlaybackState() {
         PlaybackStateStore.save(queue: queue, position: player.currentTime)
+    }
+
+    /// Flushes any in-memory listened-seconds delta into the current track, then persists all
+    /// pending playback stats. Called when leaving the foreground (LumaApp scenePhase) so a
+    /// background or kill keeps the stats without saving on every playback tick.
+    func saveStats() {
+        player.flushPendingListen()
+        library.saveStats()
     }
 
     /// App left the foreground — let the player release the audio session if it's paused, so

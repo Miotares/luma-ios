@@ -1,5 +1,7 @@
 import SwiftUI
 import Foundation
+import ImageIO
+import CoreGraphics
 
 struct ColorPalette: Sendable {
     let background: Color  // dark, saturated — used as gradient base
@@ -34,19 +36,17 @@ actor PaletteExtractor {
     // MARK: - Pixel Analysis (runs off main actor)
 
     private static func extract(from data: Data) -> ColorPalette? {
-        #if os(iOS) || os(visionOS)
-        guard let source = UIImage(data: data) else { return nil }
-        let size = CGSize(width: 20, height: 20)
-        let renderer = UIGraphicsImageRenderer(size: size)
-        let small = renderer.image { _ in source.draw(in: CGRect(origin: .zero, size: size)) }
-        guard let cgImage = small.cgImage else { return nil }
-        #elseif os(macOS)
-        guard let source = NSImage(data: data) else { return nil }
-        var rect = CGRect(x: 0, y: 0, width: 20, height: 20)
-        guard let cgImage = source.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return nil }
-        #else
-        return nil
-        #endif
+        // Decode a TINY thumbnail via ImageIO instead of inflating the full ~1024px cover just
+        // to sample 20×20 — the full decode added a needless CPU spike at every track change
+        // (and competed with starting playback). Cross-platform, no UIImage/NSImage round-trip.
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceShouldCacheImmediately: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 32,
+              ] as CFDictionary)
+        else { return nil }
 
         var pixels = [UInt8](repeating: 0, count: 20 * 20 * 4)
         guard let ctx = CGContext(

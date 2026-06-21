@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 struct PlaylistDetailView: View {
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
-    @Query private var allTracks: [Track]
+    @Query(tracksRowDescriptor()) private var allTracks: [Track]
     let playlist: Playlist
 
     @State private var isEditingName = false
@@ -109,7 +109,7 @@ struct PlaylistDetailView: View {
             #if os(iOS) || os(visionOS)
             .ignoresSafeArea(.container, edges: .top)
             #endif
-            .lumaScrollClearance(playerActive: app.player.state.isActive)
+            .lumaScrollClearance(playerActive: app.player.isActive)
             #if os(iOS) || os(visionOS)
             .environment(\.editMode, .constant(isEditing ? .active : .inactive))
             #endif
@@ -407,7 +407,10 @@ struct PlaylistDetailView: View {
             showAlbum: true,
             showsMenu: !isSelecting,
             selectionMode: isSelecting,
-            isSelected: selection.contains(track.id)
+            isSelected: selection.contains(track.id),
+            isCurrent: track.id == app.player.currentTrack?.id,
+            isPlaying: app.player.state.isPlaying,
+            liked: track.isLiked
         ) {
             if isSelecting {
                 toggleSelection(track)
@@ -417,6 +420,7 @@ struct PlaylistDetailView: View {
                 Task { await app.player.play(track: track) }
             }
         }
+        .equatable()
         .frame(minHeight: 60)
         .listRowBackground(Color.clear)
         .trackRowSeparator()

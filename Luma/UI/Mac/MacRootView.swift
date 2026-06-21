@@ -62,12 +62,12 @@ struct MacRootView: View {
                 .inspectorColumnWidth(min: 300, ideal: 340, max: 460)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if app.player.state.isActive {
+            if app.player.isActive {
                 MacNowPlayingBar(onOpen: { showingQueue.toggle() })
                     .transition(.move(edge: .bottom))
             }
         }
-        .animation(.smooth(duration: 0.3), value: app.player.state.isActive)
+        .animation(.smooth(duration: 0.3), value: app.player.isActive)
         .onAppear {
             guard !didInitialScan else { return }
             didInitialScan = true

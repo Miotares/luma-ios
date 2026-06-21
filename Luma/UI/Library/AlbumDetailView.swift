@@ -43,7 +43,7 @@ struct AlbumDetailView: View {
             #if os(iOS) || os(visionOS)
             .ignoresSafeArea(.container, edges: .top)
             #endif
-            .lumaScrollClearance(playerActive: app.player.state.isActive)
+            .lumaScrollClearance(playerActive: app.player.isActive)
             .safeAreaInset(edge: .bottom) {
                 if isSelecting {
                     TrackSelectionBar(
@@ -366,10 +366,14 @@ struct AlbumDetailView: View {
             showArtistName: false,
             showsMenu: !isSelecting,
             selectionMode: isSelecting,
-            isSelected: selection.contains(track.id)
+            isSelected: selection.contains(track.id),
+            isCurrent: track.id == app.player.currentTrack?.id,
+            isPlaying: app.player.state.isPlaying,
+            liked: track.isLiked
         ) {
             if isSelecting { toggleSelection(track) } else { play(track: track) }
         }
+        .equatable()
         .frame(maxWidth: .infinity, minHeight: 52)
         .listRowBackground(Color.clear)
         .trackRowSeparator()

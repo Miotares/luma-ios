@@ -4,9 +4,10 @@ import SwiftData
 struct SearchView: View {
     @Environment(AppContainer.self) private var app
     @State private var query = ""
-    @Query(sort: \Track.title)  private var allTracks: [Track]
+    // Prefetch `album` so the result TrackRows don't fault it per-row on the main thread.
+    @Query(tracksRowDescriptor(sortByTitle: true, prefetchEntries: false)) private var allTracks: [Track]
     @Query(sort: \Album.title)  private var allAlbums: [Album]
-    @Query(sort: \Artist.name)  private var allArtists: [Artist]
+    @Query(artistsRowDescriptor()) private var allArtists: [Artist]
 
     @FocusState private var searchFocused: Bool
 
@@ -189,11 +190,14 @@ struct SearchView: View {
                 if !filteredTracks.isEmpty {
                     resultSectionHeader("Songs")
                     ForEach(filteredTracks) { track in
-                        TrackRow(track: track, showArtwork: true, showsMenu: true) {
+                        TrackRow(track: track, showArtwork: true, showsMenu: true,
+                                 isCurrent: track.id == app.player.currentTrack?.id,
+                                 isPlaying: app.player.state.isPlaying, liked: track.isLiked) {
                             guard let idx = filteredTracks.firstIndex(where: { $0.id == track.id }) else { return }
                             app.queue.setQueue(filteredTracks, startAt: idx)
                             Task { await app.player.play(track: track) }
                         }
+                        .equatable()
                         .padding(.horizontal, 16)
                         .frame(minHeight: 60)
                         LumaSeparator()
@@ -202,7 +206,7 @@ struct SearchView: View {
             }
             .padding(.bottom, 20)
         }
-        .lumaScrollClearance(playerActive: app.player.state.isActive)
+        .lumaScrollClearance(playerActive: app.player.isActive)
     }
 
     private func resultSectionHeader(_ title: LocalizedStringKey) -> some View {

@@ -57,9 +57,13 @@ struct LumaApp: App {
                 .tint(Color.lumaAccent)
                 .preferredColorScheme(.dark)
                 .onChange(of: scenePhase) { _, phase in
-                    // Persist the play head whenever we leave the foreground, so a
-                    // background-kill still resumes where the user left off.
-                    if phase != .active { container.savePlaybackState() }
+                    // Persist the play head + playback stats whenever we leave the foreground,
+                    // so a background-kill still resumes where the user left off and keeps the
+                    // play/listen counts (stats are coalesced, not saved on every tick).
+                    if phase != .active {
+                        container.savePlaybackState()
+                        container.saveStats()
+                    }
                     // On iOS, release the audio session when backgrounding-while-paused so the
                     // lock screen reflects "paused" (iOS reads the session, not playbackState).
                     switch phase {

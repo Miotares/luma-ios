@@ -82,9 +82,12 @@ struct QueueView: View {
                 } else {
                     ForEach(Array(upNext.enumerated()), id: \.element.id) { offset, track in
                         let queueIndex = app.queue.currentIndex + 1 + offset
-                        TrackRow(track: track, showArtwork: true, showsMenu: true) {
+                        TrackRow(track: track, showArtwork: true, showsMenu: true,
+                                 isCurrent: track.id == app.player.currentTrack?.id,
+                                 isPlaying: app.player.state.isPlaying, liked: track.isLiked) {
                             Task { await app.queue.play(at: queueIndex) }
                         }
+                        .equatable()
                         .frame(minHeight: 56)   // taller rows → easier to grab & drag-reorder
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)

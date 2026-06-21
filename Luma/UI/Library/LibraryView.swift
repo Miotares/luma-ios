@@ -41,12 +41,13 @@ struct LibraryView: View {
     private static let recentTracksDescriptor: FetchDescriptor<Track> = {
         var d = FetchDescriptor<Track>(sortBy: [SortDescriptor(\.addedDate, order: .reverse)])
         d.fetchLimit = 200
+        d.relationshipKeyPathsForPrefetching = [\.album]   // recentlyAddedAlbums reads track.album
         return d
     }()
 
     @Query(sort: \Album.title)                        private var allAlbums: [Album]
-    @Query(sort: \Artist.name)                        private var allArtists: [Artist]
-    @Query(sort: \Track.title)                        private var allTracks: [Track]
+    @Query(artistsRowDescriptor())                    private var allArtists: [Artist]
+    @Query(tracksRowDescriptor(sortByTitle: true)) private var allTracks: [Track]
     @Query(LibraryView.recentTracksDescriptor)        private var recentTracks: [Track]
     @Query(sort: \Playlist.sortIndex)                 private var allPlaylists: [Playlist]
 
@@ -203,7 +204,7 @@ struct LibraryView: View {
             }
             .padding(.bottom, 20)
         }
-        .lumaScrollClearance(playerActive: app.player.state.isActive)
+        .lumaScrollClearance(playerActive: app.player.isActive)
     }
 
     /// Playlists the user pinned to the home screen (Settings → Startseite), in pin order.
@@ -370,7 +371,7 @@ struct LibraryView: View {
             }
             .padding(.bottom, 20)
         }
-        .lumaScrollClearance(playerActive: app.player.state.isActive, top: 20)
+        .lumaScrollClearance(playerActive: app.player.isActive, top: 20)
     }
 
     // MARK: Songs
@@ -393,7 +394,10 @@ struct LibraryView: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 14, trailing: 16))
                     ForEach(sortedSongs) { track in
-                        TrackRow(track: track, showArtwork: true, showsMenu: true) { playSong(track) }
+                        TrackRow(track: track, showArtwork: true, showsMenu: true,
+                                 isCurrent: track.id == app.player.currentTrack?.id,
+                                 isPlaying: app.player.state.isPlaying, liked: track.isLiked) { playSong(track) }
+                            .equatable()
                             .frame(minHeight: 56)
                             .listRowBackground(Color.clear)
                             .trackRowSeparator()
@@ -406,7 +410,7 @@ struct LibraryView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
-                .lumaScrollClearance(playerActive: app.player.state.isActive, top: 20)
+                .lumaScrollClearance(playerActive: app.player.isActive, top: 20)
             }
         }
     }
@@ -603,7 +607,9 @@ struct LibraryAlbumCard: View {
             if let w = cardWidth {
                 ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 14, size: w)
             } else {
-                ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 14, size: nil)
+                // size: nil → fills the grid column (responsive). maxPixel caps the DECODE at
+                // ~512px so the gallery doesn't inflate full ~1024px covers for ~150 cards.
+                ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 14, size: nil, maxPixel: 512)
                     .aspectRatio(1, contentMode: .fit)
                     .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
             }
@@ -628,10 +634,17 @@ struct LibraryAlbumCard: View {
 
 struct LikedSongsView: View {
     @Environment(AppContainer.self) private var app
-    @Query(
-        filter: #Predicate<Track> { $0.isLiked == true },
-        sort: \Track.title
-    ) private var liked: [Track]
+    @Query(LikedSongsView.likedDescriptor) private var liked: [Track]
+
+    /// Liked songs, with `album` prefetched so the rows don't fault it per-row while scrolling.
+    static var likedDescriptor: FetchDescriptor<Track> {
+        var d = FetchDescriptor<Track>(
+            predicate: #Predicate { $0.isLiked == true },
+            sortBy: [SortDescriptor(\.title)]
+        )
+        d.relationshipKeyPathsForPrefetching = [\.album]
+        return d
+    }
 
     var body: some View {
         if liked.isEmpty {
@@ -657,11 +670,14 @@ struct LikedSongsView: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 14, trailing: 16))
                 ForEach(liked) { track in
-                    TrackRow(track: track, showArtwork: true, showsMenu: true) {
+                    TrackRow(track: track, showArtwork: true, showsMenu: true,
+                             isCurrent: track.id == app.player.currentTrack?.id,
+                             isPlaying: app.player.state.isPlaying, liked: track.isLiked) {
                         guard let idx = liked.firstIndex(where: { $0.id == track.id }) else { return }
                         app.queue.setQueue(liked, startAt: idx)
                         Task { await app.player.play(track: track) }
                     }
+                    .equatable()
                     .frame(minHeight: 56)
                     .listRowBackground(Color.clear)
                     .trackRowSeparator()
@@ -674,7 +690,7 @@ struct LikedSongsView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .lumaScrollClearance(playerActive: app.player.state.isActive, top: 20)
+            .lumaScrollClearance(playerActive: app.player.isActive, top: 20)
         }
     }
 }

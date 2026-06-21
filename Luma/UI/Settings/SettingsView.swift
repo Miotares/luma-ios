@@ -73,7 +73,7 @@ struct SettingsView: View {
                         .padding(.bottom, 28)
                 }
             }
-            .lumaScrollClearance(playerActive: app.player.state.isActive)
+            .lumaScrollClearance(playerActive: app.player.isActive)
         }
         .lumaHideNavBar()
         .background(Color.lumaBackground.ignoresSafeArea())
