@@ -33,7 +33,7 @@ final class PlaybackQueue {
     }
 
     var hasPrevious: Bool {
-        currentIndex > 0 || (player?.currentTime ?? 0) > 3
+        currentIndex > 0 || (player?.playheadSeconds ?? 0) > 3
     }
 
     var upNext: [Track] {
@@ -165,7 +165,7 @@ final class PlaybackQueue {
     }
 
     func playPrevious() async {
-        if (player?.currentTime ?? 0) > 3 {
+        if (player?.playheadSeconds ?? 0) > 3 {
             await player?.seek(to: 0)
         } else if currentIndex > 0 {
             currentIndex -= 1

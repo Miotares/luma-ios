@@ -64,8 +64,9 @@ struct LumaApp: App {
                         container.savePlaybackState()
                         container.saveStats()
                     }
-                    // On iOS, release the audio session when backgrounding-while-paused so the
-                    // lock screen reflects "paused" (iOS reads the session, not playbackState).
+                    // iOS only: let the player idle its engine when backgrounding-while-paused. It
+                    // KEEPS the audio session active so it stays the Now-Playing app and resumable
+                    // from the lock screen / AirPods (paused state is reported via now-playing rate).
                     switch phase {
                     case .background: container.enterBackground()
                     case .active:     container.enterForeground()

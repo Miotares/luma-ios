@@ -42,9 +42,11 @@ final class NowPlayingManager {
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = max(0, elapsed)
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
         center.nowPlayingInfo = info
-        // Drives the play/pause button on macOS (no central media server there). On iOS this
-        // is effectively a no-op — iOS infers play/pause from the AVAudioSession's active
-        // state, which is why AudioPlayer.enterBackground() releases the session when paused.
+        // Tells the system our play/pause state. iOS DOES read this (together with the now-playing
+        // PlaybackRate set above: 1 = playing, 0 = paused) to label and route the lock-screen &
+        // headset/AirPods play-pause control — it does NOT infer play/pause from whether the
+        // AVAudioSession is active. So we keep the session active while paused (to stay the
+        // Now-Playing app and remain resumable) and rely on rate + playbackState for the state.
         center.playbackState = isPlaying ? .playing : .paused
     }
 

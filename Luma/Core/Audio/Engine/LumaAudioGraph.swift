@@ -93,6 +93,21 @@ final class LumaAudioGraph {
         try engine.start()
     }
 
+    /// Restart rendering after `pause()` — used by `AudioPlayer.resume()` when the user taps play.
+    /// This does a FULL cold restart (stop → prepare → start), NOT a bare `engine.start()`, ON
+    /// PURPOSE: a *paused* engine still reports `isRunning == true`, so a bare `engine.start()`
+    /// would skip `prepare()` and NOT re-acquire an output route the system idled/tore down while
+    /// we were paused in the background — the classic Bluetooth/AirPods "pause works, play-after-
+    /// pause is silent, but skip works" bug (skip works only because it rebuilds from a clean node
+    /// state). Stopping first forces `prepare()` to re-instantiate the HAL output unit and re-grab
+    /// the (possibly slept) AirPods route, so playback is audible again. CONTRACT: the caller must
+    /// (re)schedule the node's buffers AFTER this returns — a stop can drop already-scheduled ones.
+    func resume() throws {
+        if engine.isRunning { engine.stop() }
+        engine.prepare()
+        try engine.start()
+    }
+
     func stop() {
         engine.stop()
     }

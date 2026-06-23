@@ -103,9 +103,12 @@ final class AppContainer {
 
     // MARK: - Playback State Persistence
 
-    /// Snapshots the current queue + play head so the next launch can resume here.
+    /// Snapshots the current queue + play head so the next launch can resume here. Uses
+    /// `playheadSeconds` (the true head, live even while backgrounded) rather than the observable
+    /// `currentTime`, which is frozen in the background — otherwise a background save / kill would
+    /// persist a stale position and resume seconds behind where playback actually was.
     func savePlaybackState() {
-        PlaybackStateStore.save(queue: queue, position: player.currentTime)
+        PlaybackStateStore.save(queue: queue, position: player.playheadSeconds)
     }
 
     /// Flushes any in-memory listened-seconds delta into the current track, then persists all
@@ -116,8 +119,8 @@ final class AppContainer {
         library.saveStats()
     }
 
-    /// App left the foreground — let the player release the audio session if it's paused, so
-    /// the lock screen reports the correct paused state.
+    /// App left the foreground — let the player idle its engine when paused. It KEEPS the audio
+    /// session active so it stays the Now-Playing app and resumable from the lock screen / AirPods.
     func enterBackground() { player.enterBackground() }
 
     /// App returned to the foreground — refresh the now-playing info.
