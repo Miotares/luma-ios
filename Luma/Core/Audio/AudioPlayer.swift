@@ -311,10 +311,10 @@ final class AudioPlayer {
                 if allowRetry { scheduleResumeRetry(at: resumeAt) }
                 return false
             }
-            // The cold restart can leave the node disconnected on a settling route; reconnect if so,
-            // or play() raises the uncatchable "player started when in a disconnected state".
-            engineGraph.reconnectIfDisconnected(node, format: decoded.processingFormat)
-            guard engineGraph.isConnected(node) else {
+            // play() can hit the uncatchable "player started when in a disconnected state" if the
+            // route change dropped a graph connection — playSafely contains it (rebuild + retry,
+            // inside the Obj-C @try/@catch shim) and reports failure instead of crashing.
+            guard engineGraph.playSafely(node, format: decoded.processingFormat) else {
                 parkedTime = resumeAt
                 lastListenPos = resumeAt
                 stopDisplayTimer()
@@ -322,16 +322,15 @@ final class AudioPlayer {
                 if allowRetry { scheduleResumeRetry(at: resumeAt) }
                 return false
             }
-            node.play()
             anchorPlayhead(at: resumeAt)
             lastListenPos = resumeAt
         } else {
             // No decoded track to reschedule (shouldn't happen while paused) — best-effort wake.
-            do { try engineGraph.resume() } catch { /* recovered by the guards below */ }
-            guard engineGraph.isRunning, engineGraph.isConnected(activeNode) else {
+            do { try engineGraph.resume() } catch { /* recovered by the guard below */ }
+            guard engineGraph.isRunning,
+                  engineGraph.playSafely(activeNode, format: engineGraph.format) else {
                 stopDisplayTimer(); nowPlayingUpdate(); return false
             }
-            activeNode.play()
             anchorPlayhead(at: parkedTime)
         }
         state = .playing
