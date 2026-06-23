@@ -87,6 +87,10 @@ final class LumaAudioGraph {
 
     // MARK: - Lifecycle
 
+    /// Whether the engine's render pipeline is actually running. The single source of truth a
+    /// caller MUST check before AVAudioPlayerNode.play() — see `startAndPlay`.
+    var isRunning: Bool { engine.isRunning }
+
     func start() throws {
         guard !engine.isRunning else { return }
         engine.prepare()
@@ -106,6 +110,24 @@ final class LumaAudioGraph {
         if engine.isRunning { engine.stop() }
         engine.prepare()
         try engine.start()
+    }
+
+    /// Start the engine if needed and play `node` — but ONLY if the engine is verifiably running.
+    /// `AVAudioPlayerNode.play()` on a stopped engine raises an UNCATCHABLE Obj-C NSException
+    /// ("required condition is false: _engine->IsRunning()") that Swift `try?`/`do-catch` cannot
+    /// trap — the hard crash when an audio route change (wired-headset plug, car Bluetooth) leaves
+    /// `engine.start()` momentarily failing. On a healthy route this is identical to start()+play();
+    /// on a settling route it returns false WITHOUT calling play(), so the caller can stay paused
+    /// and retry instead of crashing. Returns whether playback actually started.
+    @discardableResult
+    func startAndPlay(_ node: AVAudioPlayerNode) -> Bool {
+        if !engine.isRunning {
+            engine.prepare()
+            do { try engine.start() } catch { return false }
+        }
+        guard engine.isRunning else { return false }
+        node.play()
+        return true
     }
 
     func stop() {

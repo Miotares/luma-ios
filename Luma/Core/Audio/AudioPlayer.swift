@@ -126,6 +126,9 @@ final class AudioPlayer {
     private var playRecorded = false
     // Bounds the skip-on-unplayable loop so an all-missing queue stops instead of looping.
     private var skipFailures = 0
+    // Guards `scheduleResumeRetry` so only ONE deferred restart is ever in flight — a settling
+    // audio route (headset plug / car BT) is retried once, not spun on.
+    private var resumeRetryScheduled = false
 
     // Sleep timer internals: wall-clock deadline (survives timer coalescing/backgrounding).
     private var sleepDeadline: Date?
@@ -211,8 +214,16 @@ final class AudioPlayer {
         isActive = true   // stopped→active boundary (covers both autostart and restore-paused)
 
         if autostart {
-            try? engineGraph.start()
-            node.play()
+            guard engineGraph.startAndPlay(node) else {
+                // Engine couldn't start (e.g. the audio route is still settling after a wired-
+                // headset plug / car BT connect). Never call node.play() on a stopped engine — it
+                // raises an uncatchable NSException and crashes. Park paused and retry once shortly.
+                clock.invalidate()
+                state = .paused
+                nowPlayingUpdate()
+                scheduleResumeRetry(at: clamped)
+                return
+            }
             anchorPlayhead(at: clamped)
             state = .playing
             startDisplayTimer()
@@ -259,7 +270,10 @@ final class AudioPlayer {
     /// activated). Mapped to .commandFailed at the remote-command layer so a failed resume doesn't
     /// look successful to iOS.
     @discardableResult
-    func resume() -> Bool {
+    func resume() -> Bool { performResume(allowRetry: true) }
+
+    @discardableResult
+    private func performResume(allowRetry: Bool) -> Bool {
         guard state == .paused, currentTrack != nil else { return false }
         do { try session.activate() } catch { return false }
         // RE-SCHEDULE + COLD-RESTART the engine on resume rather than relying on a bare `node.play()`
@@ -282,14 +296,29 @@ final class AudioPlayer {
             engineGraph.connect(player: node, format: decoded.processingFormat)
             node.volume = volume
             clock.invalidate()
-            do { try engineGraph.resume() } catch { try? engineGraph.start() }
+            do { try engineGraph.resume() } catch { /* recovered by the isRunning guard below */ }
             schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
+            guard engineGraph.isRunning else {
+                // The cold restart failed — typically the audio route is still settling after a
+                // wired-headset plug or a car Bluetooth connect. Calling node.play() on a stopped
+                // engine raises an UNCATCHABLE Obj-C NSException and crashes; instead stay paused at
+                // the parked position and retry once shortly, by when the route is usually runnable.
+                parkedTime = resumeAt
+                lastListenPos = resumeAt
+                stopDisplayTimer()
+                nowPlayingUpdate()
+                if allowRetry { scheduleResumeRetry(at: resumeAt) }
+                return false
+            }
             node.play()
             anchorPlayhead(at: resumeAt)
             lastListenPos = resumeAt
         } else {
             // No decoded track to reschedule (shouldn't happen while paused) — best-effort wake.
-            do { try engineGraph.resume() } catch { try? engineGraph.start() }
+            do { try engineGraph.resume() } catch { /* recovered by the isRunning guard below */ }
+            guard engineGraph.isRunning else {
+                stopDisplayTimer(); nowPlayingUpdate(); return false
+            }
             activeNode.play()
             anchorPlayhead(at: parkedTime)
         }
@@ -297,6 +326,27 @@ final class AudioPlayer {
         startDisplayTimer()
         nowPlayingUpdate()
         return true
+    }
+
+    /// One-shot retry of a (re)start that failed because the engine couldn't come up — typically
+    /// the audio route was still settling right after a wired-headset plug or a car Bluetooth
+    /// connect. Re-attempts on the main queue a moment later, by when the route is usually runnable.
+    /// Capped at a single in-flight retry (and the retry itself passes allowRetry: false, so it
+    /// can't reschedule) — a persistently dead route can't spin. Bails if the user changed track or
+    /// queue meanwhile. The position is already parked in `parkedTime` by the caller before bailing.
+    private func scheduleResumeRetry(at position: TimeInterval) {
+        guard !resumeRetryScheduled else { return }
+        resumeRetryScheduled = true
+        let generation = scheduleGeneration
+        let trackID = currentTrackID
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self else { return }
+            self.resumeRetryScheduled = false
+            guard self.state == .paused,
+                  self.scheduleGeneration == generation,
+                  self.currentTrackID == trackID else { return }
+            self.performResume(allowRetry: false)
+        }
     }
 
     /// Called when the app leaves the foreground. While playing, it's normal background audio —
@@ -423,8 +473,15 @@ final class AudioPlayer {
         lastListenPos = target
         clock.invalidate()
         if state == .playing {
-            try? engineGraph.start()
-            node.play()
+            guard engineGraph.startAndPlay(node) else {
+                // Route still settling — don't crash on play(); drop to paused at the seek target
+                // and retry once shortly.
+                state = .paused
+                stopDisplayTimer()
+                nowPlayingUpdate()
+                scheduleResumeRetry(at: target)
+                return
+            }
             anchorPlayhead(at: target)
         }
         nowPlayingUpdate()
@@ -656,8 +713,14 @@ final class AudioPlayer {
         engineGraph.connect(player: incoming, format: decoded.processingFormat)
         incoming.volume = 0
         schedule(decoded, track: track, on: incoming, from: 0, generation: generation)
-        try? engineGraph.start()
-        incoming.play()
+        guard engineGraph.startAndPlay(incoming) else {
+            // Route settling — abort the crossfade cleanly so the OUTGOING node keeps playing,
+            // instead of crashing on incoming.play() or going silent on a half-swapped graph.
+            useNodeB.toggle()              // revert: activeNode goes back to the outgoing node
+            crossfadeOutgoing = nil
+            isCrossfading = false
+            return
+        }
 
         // The outgoing track is near its end; record its play if the threshold wasn't hit yet.
         if !playRecorded, let outgoing = currentTrack { playRecorded = true; onTrackPlayed?(outgoing) }
@@ -768,8 +831,17 @@ final class AudioPlayer {
         schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
         clock.invalidate()
         if wasPlaying {
-            try? engineGraph.start()
-            node.play()
+            guard engineGraph.startAndPlay(node) else {
+                // The route is still settling after the reconfigure (e.g. car BT just connected) —
+                // don't crash on play(); stay paused at the live position and retry once shortly,
+                // by when the new route is runnable.
+                state = .paused
+                parkedTime = resumeAt
+                stopDisplayTimer()
+                nowPlayingUpdate()
+                scheduleResumeRetry(at: resumeAt)
+                return
+            }
             anchorPlayhead(at: resumeAt)
         }
     }
