@@ -30,6 +30,11 @@ final class LumaAudioGraph {
     /// rate briefly drops audio — the one unavoidable gap at a rate boundary.
     private(set) var format: AVAudioFormat
 
+    /// Self-expiring wall-clock instant the render graph last DEFINITIVELY failed to start playing
+    /// (e.g. a route change left it disconnected / its AUs uninitialized). AudioPlayer's boundary
+    /// handler reads this to refuse a spurious queue advance right after a failed play().
+    private(set) var lastPlayFailure: Date?
+
     /// Fired after the engine was reconfigured (HW/route change). The owner should restart
     /// the engine and reschedule playback from the current frame.
     var onConfigurationChange: (() -> Void)?
@@ -112,43 +117,61 @@ final class LumaAudioGraph {
         try engine.start()
     }
 
-    /// Reconnect the full path node→mixer→eq→output. Recovers after a route change (wired-headset
-    /// plug, car Bluetooth) drops a connection somewhere in the chain — which is what makes play()
-    /// raise the uncatchable "player started when in a disconnected state" (the player node→mixer
-    /// link can survive while eq→output, whose format follows the HW, gets dropped, leaving NO path
-    /// to the output). The shared chain is rebuilt at the live output HW format; the player keeps
-    /// its own track format. Wrapped in LumaAudioGuard by the caller, since connect can also raise.
-    func rebuildConnections(player node: AVAudioPlayerNode, format: AVAudioFormat) {
+    /// FULL cold re-init of the render graph — the recovery after a route change (wired-headset
+    /// plug, car Bluetooth). A route change drops the eq→output link (its format follows the HW);
+    /// merely reconnecting WHILE THE ENGINE IS RUNNING brings the AUs back UNINITIALIZED and they
+    /// then render `kAudioUnitErr_Uninitialized` (-10867) every quantum forever. So this STOPS the
+    /// engine, reconnects every shared link at the live HW format, then prepare()+start() to
+    /// re-instantiate AND initialize the AUs and re-acquire the route. Returns whether the engine is
+    /// actually running afterwards. CONTRACT: this DROPS all scheduled buffers — the caller MUST
+    /// reschedule from the live head before play(). Wrapped in LumaAudioGuard because connect/start
+    /// can raise uncatchable Obj-C NSExceptions while the route is settling.
+    @discardableResult
+    func rebuildConnections(player node: AVAudioPlayerNode, format: AVAudioFormat) -> Bool {
         let hw = engine.outputNode.outputFormat(forBus: 0)
         let chainFormat = hw.sampleRate > 0 ? hw : self.format
-        engine.connect(eq, to: engine.outputNode, format: chainFormat)
-        engine.connect(mixer, to: eq, format: chainFormat)
-        engine.connect(node, to: mixer, format: format)
+        if chainFormat.sampleRate > 0 { self.format = chainFormat }
+        let completed = LumaAudioGuard.attempt {
+            if self.engine.isRunning { self.engine.stop() }
+            self.engine.connect(self.playerA, to: self.mixer, format: self.format)
+            self.engine.connect(self.playerB, to: self.mixer, format: self.format)
+            self.engine.connect(node, to: self.mixer, format: format)
+            self.engine.connect(self.mixer, to: self.eq, format: chainFormat)
+            self.engine.connect(self.eq, to: self.engine.outputNode, format: chainFormat)
+            self.engine.prepare()
+            try? self.engine.start()
+        }
+        let running = completed && engine.isRunning
+        if !running { lastPlayFailure = Date() }
+        return running
     }
 
     /// Play `node`, contained against the UNCATCHABLE Obj-C NSExceptions `AVAudioPlayerNode.play()`
-    /// raises during an audio route change ("player started when in a disconnected state", and the
-    /// connect/format assertions) — Swift `try?`/`do-catch` can't trap those. If the first play()
-    /// raises, rebuild the whole graph chain and try once more; BOTH attempts (and the rebuild) run
-    /// inside the `LumaAudioGuard` @try/@catch shim, so a raised exception becomes a recoverable
-    /// `false` instead of a SIGABRT. Returns whether playback actually started.
+    /// raises ("player started when in a disconnected state" / engine-not-running) — Swift try?/catch
+    /// can't trap those. Counts as success ONLY if play() didn't raise AND the engine is running, so
+    /// a non-rendering play() on a route-broken graph is reported as failure (stamps lastPlayFailure)
+    /// rather than a silent "success". The heavy rebuild+reschedule recovery is coordinated by
+    /// AudioPlayer (it owns the decoded track + position), since rebuildConnections drops buffers.
     @discardableResult
     func playSafely(_ node: AVAudioPlayerNode, format: AVAudioFormat) -> Bool {
-        if LumaAudioGuard.attempt({ node.play() }) { return true }
-        LumaAudioGuard.attempt { self.rebuildConnections(player: node, format: format) }
-        return LumaAudioGuard.attempt({ node.play() })
+        if LumaAudioGuard.attempt({ node.play() }), engine.isRunning {
+            lastPlayFailure = nil   // graph is genuinely rendering again
+            return true
+        }
+        lastPlayFailure = Date()
+        return false
     }
 
     /// Start the engine if needed, then play `node` route-change-proof. On a healthy route this is
-    /// start()+play(); on a settling route it returns false WITHOUT crashing (the engine wouldn't
-    /// start, or play() is contained by `playSafely`), so the caller can stay paused and retry.
+    /// start()+play(); on a settling/broken route it returns false WITHOUT crashing, so the caller
+    /// can recover (rebuildConnections + reschedule) or stay paused and retry.
     @discardableResult
     func startAndPlay(_ node: AVAudioPlayerNode, format: AVAudioFormat) -> Bool {
         if !engine.isRunning {
             engine.prepare()
-            do { try engine.start() } catch { return false }
+            do { try engine.start() } catch { lastPlayFailure = Date(); return false }
         }
-        guard engine.isRunning else { return false }
+        guard engine.isRunning else { lastPlayFailure = Date(); return false }
         return playSafely(node, format: format)
     }
 

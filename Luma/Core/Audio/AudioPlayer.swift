@@ -103,6 +103,11 @@ final class AudioPlayer {
     /// background — but wall time advances 1:1 with audio at normal rate, so `position + elapsed`
     /// is the true head. Refreshed at each (re)start, so it always describes the CURRENT track.
     private var wallClockAnchor: (date: Date, position: TimeInterval)?
+    /// Wall-clock instant the current track actually began rendering — stamped in `anchorPlayhead`
+    /// (the single chokepoint hit by every authoritative (re)start while playing), cleared on
+    /// pause/stop. `handleBoundary` uses it to tell a genuine end-of-track from a SPURIOUS ~0s
+    /// completion fired by a route-broken/uninitialized graph, which would otherwise burn the queue.
+    private var trackStartedAt: Date?
     private var scheduleGeneration = 0                // stale-completion guard
     private var displayTimer: Timer?
     /// Whether the app is in the foreground. While backgrounded, the display tick still runs
@@ -259,6 +264,7 @@ final class AudioPlayer {
         engineGraph.pause()
         state = .paused
         parkedTime = currentTime
+        trackStartedAt = nil
         stopDisplayTimer()
         flushListen()
         onStatsShouldPersist?()   // persist coalesced play/listen stats on pause
@@ -294,27 +300,20 @@ final class AudioPlayer {
             node.stop()
             scheduleGeneration += 1
             clearPreload()
-            engineGraph.connect(player: node, format: decoded.processingFormat)
-            node.volume = volume
             clock.invalidate()
-            do { try engineGraph.resume() } catch { /* recovered by the isRunning guard below */ }
+            // FULL cold rebuild: reconnect the WHOLE chain (a route change can drop the eq→output
+            // link, whose format follows the HW) AND restart the engine so its AUs re-initialize — a
+            // BARE restart leaves them uninitialized and they render `-10867` forever, and play()
+            // raises the uncatchable "player started when in a disconnected state". rebuildConnections
+            // drops scheduled buffers, so schedule AFTER it; playSafely then only reports success if
+            // the engine is actually running (no silent "success" on a dead graph).
+            let ready = engineGraph.rebuildConnections(player: node, format: decoded.processingFormat)
+            node.volume = volume
             schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
-            guard engineGraph.isRunning else {
-                // The cold restart failed — typically the audio route is still settling after a
-                // wired-headset plug or a car Bluetooth connect. Calling node.play() on a stopped
-                // engine raises an UNCATCHABLE Obj-C NSException and crashes; instead stay paused at
-                // the parked position and retry once shortly, by when the route is usually runnable.
-                parkedTime = resumeAt
-                lastListenPos = resumeAt
-                stopDisplayTimer()
-                nowPlayingUpdate()
-                if allowRetry { scheduleResumeRetry(at: resumeAt) }
-                return false
-            }
-            // play() can hit the uncatchable "player started when in a disconnected state" if the
-            // route change dropped a graph connection — playSafely contains it (rebuild + retry,
-            // inside the Obj-C @try/@catch shim) and reports failure instead of crashing.
-            guard engineGraph.playSafely(node, format: decoded.processingFormat) else {
+            guard ready, engineGraph.playSafely(node, format: decoded.processingFormat) else {
+                // Couldn't rebuild/start or play didn't render — the route is still settling after a
+                // wired-headset plug / car BT connect. Stay paused at the parked position and retry
+                // once shortly (never play() on a dead graph → no crash, no queue spin).
                 parkedTime = resumeAt
                 lastListenPos = resumeAt
                 stopDisplayTimer()
@@ -441,6 +440,7 @@ final class AudioPlayer {
     private func anchorPlayhead(at seconds: TimeInterval) {
         pendingAnchorSeconds = seconds
         wallClockAnchor = (Date(), max(0, seconds))
+        trackStartedAt = Date()
     }
 
     /// Flush any in-memory listened-seconds delta into the current track's stats (no save).
@@ -466,6 +466,7 @@ final class AudioPlayer {
         currentTime = 0
         duration = 0
         parkedTime = 0
+        trackStartedAt = nil
         nowPlaying.clear()
         onPersist?()
     }
@@ -562,6 +563,23 @@ final class AudioPlayer {
     /// playing (gapless preload or crossfade incoming), so this mostly does bookkeeping.
     private func handleBoundary(finished: Track, generation: Int) {
         guard generation == scheduleGeneration else { return }   // stale (stop/seek/skip/new play)
+        // SPURIOUS instant completion: a route-broken / uninitialized graph (render err -10867)
+        // drains the just-scheduled buffer immediately, firing this within ms even though the track
+        // never really played. Without this guard each such completion advances the queue → it
+        // burns through the whole queue many times/sec. Refuse to advance (or record a play) when
+        // the track effectively didn't play (≈0s elapsed and not a genuinely short track) or the
+        // graph just failed to start; instead drop to paused + one self-limiting retry.
+        let elapsed = trackStartedAt.map { Date().timeIntervalSince($0) } ?? .infinity
+        let graphBroken = engineGraph.lastPlayFailure.map { Date().timeIntervalSince($0) < 1.0 } ?? false
+        let playedNothing = elapsed < 1.0 && (trackDuration <= 0 || trackDuration > 1.5)
+        if graphBroken || playedNothing {
+            state = .paused
+            stopDisplayTimer()
+            clock.invalidate()
+            nowPlayingUpdate()
+            scheduleResumeRetry(at: parkedTime)
+            return
+        }
         // A finished track counts as played (covers tracks shorter than the listen threshold).
         if !playRecorded { playRecorded = true; onTrackPlayed?(finished) }
 
@@ -837,15 +855,17 @@ final class AudioPlayer {
         node.stop()
         scheduleGeneration += 1
         clearPreload()
-        engineGraph.connect(player: node, format: decoded.processingFormat)
-        node.volume = volume
-        schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
         clock.invalidate()
         if wasPlaying {
-            guard engineGraph.startAndPlay(node, format: decoded.processingFormat) else {
-                // The route is still settling after the reconfigure (e.g. car BT just connected) —
-                // don't crash on play(); stay paused at the live position and retry once shortly,
-                // by when the new route is runnable.
+            // Cold rebuild (reconnect the whole chain + restart so the AUs re-initialize), THEN
+            // reschedule from the live head (the rebuild dropped the buffers), THEN play. This is
+            // the real recovery for a car-BT / headset route change that arrives while playing — a
+            // plain reconnect-while-running leaves the AUs uninitialized (render err -10867).
+            let ready = engineGraph.rebuildConnections(player: node, format: decoded.processingFormat)
+            node.volume = volume
+            schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
+            guard ready, engineGraph.playSafely(node, format: decoded.processingFormat) else {
+                // Route still settling — stay paused at the live position and retry once shortly.
                 state = .paused
                 parkedTime = resumeAt
                 stopDisplayTimer()
@@ -854,6 +874,12 @@ final class AudioPlayer {
                 return
             }
             anchorPlayhead(at: resumeAt)
+        } else {
+            // Paused across the route change: just reconnect + reschedule so the next resume() (which
+            // does its own full rebuild) is ready. No play() here.
+            engineGraph.connect(player: node, format: decoded.processingFormat)
+            node.volume = volume
+            schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
         }
     }
 
