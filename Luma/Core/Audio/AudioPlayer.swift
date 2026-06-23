@@ -214,10 +214,11 @@ final class AudioPlayer {
         isActive = true   // stopped→active boundary (covers both autostart and restore-paused)
 
         if autostart {
-            guard engineGraph.startAndPlay(node) else {
-                // Engine couldn't start (e.g. the audio route is still settling after a wired-
-                // headset plug / car BT connect). Never call node.play() on a stopped engine — it
-                // raises an uncatchable NSException and crashes. Park paused and retry once shortly.
+            guard engineGraph.startAndPlay(node, format: decoded.processingFormat) else {
+                // Engine couldn't start or the node was disconnected (e.g. the audio route is still
+                // settling after a wired-headset plug / car BT connect). Never call play() on a
+                // stopped engine or disconnected node — it raises an uncatchable NSException and
+                // crashes. Park paused and retry once shortly.
                 clock.invalidate()
                 state = .paused
                 nowPlayingUpdate()
@@ -310,13 +311,24 @@ final class AudioPlayer {
                 if allowRetry { scheduleResumeRetry(at: resumeAt) }
                 return false
             }
+            // The cold restart can leave the node disconnected on a settling route; reconnect if so,
+            // or play() raises the uncatchable "player started when in a disconnected state".
+            engineGraph.reconnectIfDisconnected(node, format: decoded.processingFormat)
+            guard engineGraph.isConnected(node) else {
+                parkedTime = resumeAt
+                lastListenPos = resumeAt
+                stopDisplayTimer()
+                nowPlayingUpdate()
+                if allowRetry { scheduleResumeRetry(at: resumeAt) }
+                return false
+            }
             node.play()
             anchorPlayhead(at: resumeAt)
             lastListenPos = resumeAt
         } else {
             // No decoded track to reschedule (shouldn't happen while paused) — best-effort wake.
-            do { try engineGraph.resume() } catch { /* recovered by the isRunning guard below */ }
-            guard engineGraph.isRunning else {
+            do { try engineGraph.resume() } catch { /* recovered by the guards below */ }
+            guard engineGraph.isRunning, engineGraph.isConnected(activeNode) else {
                 stopDisplayTimer(); nowPlayingUpdate(); return false
             }
             activeNode.play()
@@ -473,7 +485,7 @@ final class AudioPlayer {
         lastListenPos = target
         clock.invalidate()
         if state == .playing {
-            guard engineGraph.startAndPlay(node) else {
+            guard engineGraph.startAndPlay(node, format: decoded.processingFormat) else {
                 // Route still settling — don't crash on play(); drop to paused at the seek target
                 // and retry once shortly.
                 state = .paused
@@ -713,7 +725,7 @@ final class AudioPlayer {
         engineGraph.connect(player: incoming, format: decoded.processingFormat)
         incoming.volume = 0
         schedule(decoded, track: track, on: incoming, from: 0, generation: generation)
-        guard engineGraph.startAndPlay(incoming) else {
+        guard engineGraph.startAndPlay(incoming, format: decoded.processingFormat) else {
             // Route settling — abort the crossfade cleanly so the OUTGOING node keeps playing,
             // instead of crashing on incoming.play() or going silent on a half-swapped graph.
             useNodeB.toggle()              // revert: activeNode goes back to the outgoing node
@@ -831,7 +843,7 @@ final class AudioPlayer {
         schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
         clock.invalidate()
         if wasPlaying {
-            guard engineGraph.startAndPlay(node) else {
+            guard engineGraph.startAndPlay(node, format: decoded.processingFormat) else {
                 // The route is still settling after the reconfigure (e.g. car BT just connected) —
                 // don't crash on play(); stay paused at the live position and retry once shortly,
                 // by when the new route is runnable.

@@ -112,20 +112,37 @@ final class LumaAudioGraph {
         try engine.start()
     }
 
-    /// Start the engine if needed and play `node` — but ONLY if the engine is verifiably running.
-    /// `AVAudioPlayerNode.play()` on a stopped engine raises an UNCATCHABLE Obj-C NSException
-    /// ("required condition is false: _engine->IsRunning()") that Swift `try?`/`do-catch` cannot
-    /// trap — the hard crash when an audio route change (wired-headset plug, car Bluetooth) leaves
-    /// `engine.start()` momentarily failing. On a healthy route this is identical to start()+play();
-    /// on a settling route it returns false WITHOUT calling play(), so the caller can stay paused
-    /// and retry instead of crashing. Returns whether playback actually started.
+    /// Whether `node`'s output is connected into the graph. `AVAudioPlayerNode.play()` on a node
+    /// whose output was dropped — which a route-change restart can do — raises the UNCATCHABLE
+    /// Obj-C NSException "player started when in a disconnected state".
+    func isConnected(_ node: AVAudioPlayerNode) -> Bool {
+        !engine.outputConnectionPoints(for: node, outputBus: 0).isEmpty
+    }
+
+    /// Reconnect `node`→mixer ONLY if its output is currently disconnected. The connectivity check
+    /// means a healthy node — and its already-scheduled buffers — is never disturbed (a needless
+    /// reconnect could drop them), so this is a no-op on the normal path.
+    func reconnectIfDisconnected(_ node: AVAudioPlayerNode, format: AVAudioFormat) {
+        guard !isConnected(node) else { return }
+        engine.connect(node, to: mixer, format: format)
+    }
+
+    /// Start the engine if needed and play `node` — but ONLY if the engine is verifiably running
+    /// AND the node is connected. `AVAudioPlayerNode.play()` raises UNCATCHABLE Obj-C NSExceptions
+    /// that Swift `try?`/`do-catch` cannot trap — "required condition is false: _engine->IsRunning()"
+    /// on a stopped engine, and "player started when in a disconnected state" on a node the engine
+    /// dropped during a route change (wired-headset plug, car Bluetooth). On a healthy route this is
+    /// identical to start()+play(); on a settling route it returns false WITHOUT calling play(), so
+    /// the caller can stay paused and retry instead of crashing. Returns whether playback started.
     @discardableResult
-    func startAndPlay(_ node: AVAudioPlayerNode) -> Bool {
+    func startAndPlay(_ node: AVAudioPlayerNode, format: AVAudioFormat) -> Bool {
         if !engine.isRunning {
             engine.prepare()
             do { try engine.start() } catch { return false }
         }
         guard engine.isRunning else { return false }
+        reconnectIfDisconnected(node, format: format)
+        guard isConnected(node) else { return false }
         node.play()
         return true
     }
