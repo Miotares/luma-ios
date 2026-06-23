@@ -409,7 +409,8 @@ final class LibraryRepository {
         album.title = newTitle
         album.year = year
         let g = genre?.trimmingCharacters(in: .whitespacesAndNewlines)
-        album.genre = (g?.isEmpty ?? true) ? nil : g
+        let newGenre = (g?.isEmpty ?? true) ? nil : g
+        album.genre = newGenre
 
         if !newArtist.isEmpty, album.artistName != newArtist {
             let oldArtist = album.artist
@@ -431,7 +432,13 @@ final class LibraryRepository {
             }
         }
 
-        for track in album.tracks { track.albumTitle = newTitle }
+        // Propagate the album genre to every track too: Smart Playlists filter on Track.genre
+        // (not Album.genre), so editing the album genre must retag its tracks or they stay in the
+        // OLD genre's smart list. Mirrors how editing the album title propagates albumTitle below.
+        for track in album.tracks {
+            track.albumTitle = newTitle
+            track.genre = newGenre
+        }
         try context.save()
     }
 

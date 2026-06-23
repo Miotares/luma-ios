@@ -22,6 +22,23 @@ extension EnvironmentValues {
     }
 }
 
+/// What the player's "Album/Künstler anzeigen" should open as a FULL page.
+enum LibraryNavTarget { case album(Album); case artist(Artist) }
+
+/// Action the player invokes to open an album/artist as a normal full-screen page on the
+/// Mediathek tab (exactly like opening it from the home screen) — closing the player sheet
+/// first, since pushing inside the sheet would still leave a swipe-down "card".
+struct OpenLibraryItemKey: EnvironmentKey {
+    static let defaultValue: (LibraryNavTarget) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+    var openLibraryItem: (LibraryNavTarget) -> Void {
+        get { self[OpenLibraryItemKey.self] }
+        set { self[OpenLibraryItemKey.self] = newValue }
+    }
+}
+
 // MARK: - Tab Model
 
 enum LumaTab: Int, CaseIterable {
@@ -71,8 +88,22 @@ struct MainTabView: View {
     @State private var playlistsPath = NavigationPath()
     @State private var settingsPath = NavigationPath()
     @State private var libraryResetSignal = 0
+    /// Album/artist the player asked to open; performed after the player sheet finishes dismissing.
+    @State private var pendingLibraryTarget: LibraryNavTarget?
 
     private var miniPlayerActive: Bool { app.player.isActive }
+
+    /// Push the album/artist the player requested onto the Mediathek tab, once the player sheet
+    /// has fully dismissed — opening it as a normal full page, just like from the home screen.
+    private func openPendingLibraryTarget() {
+        guard let target = pendingLibraryTarget else { return }
+        pendingLibraryTarget = nil
+        selectedTab = .library
+        switch target {
+        case .album(let album):   libraryPath.append(album)
+        case .artist(let artist): libraryPath.append(artist)
+        }
+    }
 
     /// Tapping the already-selected tab pops it to root; on Mediathek it also resets
     /// the filter back to "Alben".
@@ -114,7 +145,14 @@ struct MainTabView: View {
         }
         .tint(Color.lumaAccent)
         .environment(\.openNowPlaying) { showingPlayer = true }
-        .sheet(isPresented: $showingPlayer) {
+        .environment(\.openLibraryItem) { target in
+            // Defer navigation to the player's onDismiss: mutating the tab + path WHILE the sheet
+            // is mid-dismiss races the dismissal animation and the push can be dropped. Stash the
+            // target, close the player, and navigate once it's fully gone.
+            pendingLibraryTarget = target
+            showingPlayer = false
+        }
+        .sheet(isPresented: $showingPlayer, onDismiss: openPendingLibraryTarget) {
             PlayerView()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)

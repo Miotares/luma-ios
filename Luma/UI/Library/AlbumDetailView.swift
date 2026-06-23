@@ -47,17 +47,6 @@ struct AlbumDetailView: View {
             .ignoresSafeArea(.container, edges: .top)
             #endif
             .lumaScrollClearance(playerActive: app.player.isActive)
-            .safeAreaInset(edge: .bottom) {
-                if isSelecting {
-                    TrackSelectionBar(
-                        count: selection.count,
-                        onAddToPlaylist: { showingPlaylistPicker = true },
-                        onLike: likeSelected
-                    )
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-            .animation(.smooth(duration: 0.25), value: isSelecting)
 
             // Floating top bar: back / select-all (left) + options / done (right)
             HStack {
@@ -99,6 +88,23 @@ struct AlbumDetailView: View {
             .padding(.top, 18)
             .frame(maxWidth: .infinity)
         }
+        // Bulk-selection action bar. MUST be applied here (right after the ZStack, BEFORE the
+        // .background(…ignoresSafeArea) below) — applied later it loses the safe area and renders
+        // off-screen. The mini-player floats via a NavigationStack-level safeAreaInset that does
+        // NOT reduce this view's safe area, so add explicit bottom clearance for it (same reason
+        // lumaScrollClearance exists); ~64pt mini-player + a small gap. Verified on device.
+        .safeAreaInset(edge: .bottom) {
+            if isSelecting {
+                TrackSelectionBar(
+                    count: selection.count,
+                    onAddToPlaylist: { showingPlaylistPicker = true },
+                    onLike: likeSelected
+                )
+                .padding(.bottom, app.player.isActive ? 72 : 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.smooth(duration: 0.25), value: isSelecting)
         // Keep the bar PRESENT (transparent) so iOS's native interactive
         // swipe-back stays enabled — hiding it entirely disables the gesture.
         .lumaInlineNavTitle()

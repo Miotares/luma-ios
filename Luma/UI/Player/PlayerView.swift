@@ -8,13 +8,14 @@ import AVKit
 struct PlayerView: View {
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
+    /// Opens an album/artist as a full page on the Mediathek tab (closes the player first), so it
+    /// behaves exactly like opening it from the home screen — not a swipe-down card.
+    @Environment(\.openLibraryItem) private var openLibraryItem
     @Query(sort: \Playlist.createdDate, order: .reverse) private var playlists: [Playlist]
 
     @State private var palette: ColorPalette?
     @State private var showingQueue = false
     @State private var showNavOptions = false
-    @State private var albumSheet: Album?
-    @State private var artistSheet: Artist?
 
     private var track: Track? { app.player.currentTrack }
 
@@ -24,18 +25,12 @@ struct PlayerView: View {
                 ArtworkBackground(data: track?.album?.artworkData, palette: palette)
             }
             .sheet(isPresented: $showingQueue) { QueueView() }
-            .sheet(item: $albumSheet) { album in
-                NavigationStack { AlbumDetailView(album: album) }
-            }
-            .sheet(item: $artistSheet) { artist in
-                NavigationStack { ArtistDetailView(artist: artist) }
-            }
             .confirmationDialog(track?.title ?? "", isPresented: $showNavOptions, titleVisibility: .visible) {
                 if let album = track?.album {
-                    Button("Album anzeigen") { albumSheet = album }
+                    Button("Album anzeigen") { openLibraryItem(.album(album)) }
                 }
                 if let artist = track?.artist {
-                    Button("Künstler anzeigen") { artistSheet = artist }
+                    Button("Künstler anzeigen") { openLibraryItem(.artist(artist)) }
                 }
                 Button("Abbrechen", role: .cancel) {}
             }
@@ -199,12 +194,12 @@ struct PlayerView: View {
     @ViewBuilder
     private func optionsMenu(track: Track) -> some View {
         if let album = track.album {
-            Button { albumSheet = album } label: {
+            Button { openLibraryItem(.album(album)) } label: {
                 Label("Album anzeigen", systemImage: "square.stack")
             }
         }
         if let artist = track.artist {
-            Button { artistSheet = artist } label: {
+            Button { openLibraryItem(.artist(artist)) } label: {
                 Label("Künstler anzeigen", systemImage: "music.microphone")
             }
         }
