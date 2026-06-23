@@ -1,15 +1,9 @@
 import Foundation
 import MediaPlayer
-import os
 
 // Connects MPRemoteCommandCenter to AudioPlayer + PlaybackQueue.
 // Must be kept alive for the lifetime of the app — owned by AppContainer.
 final class RemoteCommandHandler {
-    /// Logs which remote command actually fires (lock screen, Control Center, AirPods/headset).
-    /// View with: Console.app → filter subsystem "Luma", category "remote" (or `log stream
-    /// --predicate 'subsystem == "Luma"'`). This is how we tell whether an AirPods "play" press
-    /// arrives as togglePlayPause / play / pause — the crux of the play-after-pause bug.
-    private static let log = Logger(subsystem: "Luma", category: "remote")
     private let commandCenter = MPRemoteCommandCenter.shared()
     private weak var player: AudioPlayer?
     private weak var queue: PlaybackQueue?
@@ -32,23 +26,17 @@ final class RemoteCommandHandler {
     }
 
     private func register() {
+        // Return .commandFailed (not .success) when the action no-ops — e.g. a "pause" press that
+        // arrives while already paused — so iOS doesn't latch an inverted play/pause state and
+        // routes the next press correctly.
         commandCenter.playCommand.addTarget { [weak self] _ in
-            let before = self?.player?.state
-            let ok = self?.player?.resume() ?? false
-            Self.log.info("play command (state=\(String(describing: before), privacy: .public)) → resumed=\(ok, privacy: .public)")
-            return ok ? .success : .commandFailed
+            (self?.player?.resume() ?? false) ? .success : .commandFailed
         }
         commandCenter.pauseCommand.addTarget { [weak self] _ in
-            let before = self?.player?.state
-            let ok = self?.player?.pause() ?? false
-            Self.log.info("pause command (state=\(String(describing: before), privacy: .public)) → paused=\(ok, privacy: .public)")
-            return ok ? .success : .commandFailed
+            (self?.player?.pause() ?? false) ? .success : .commandFailed
         }
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            let before = self?.player?.state
-            let ok = self?.player?.togglePlayPause() ?? false
-            Self.log.info("toggle command (state=\(String(describing: before), privacy: .public)) → acted=\(ok, privacy: .public)")
-            return ok ? .success : .commandFailed
+            (self?.player?.togglePlayPause() ?? false) ? .success : .commandFailed
         }
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             Task { await self?.queue?.advance() }
