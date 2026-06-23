@@ -11,33 +11,7 @@ struct LumaApp: App {
     /// Set when the store had to be reset on launch, so the UI can inform the user once.
     static let storeWasResetKey = "lumaStoreWasReset"
 
-    /// Where the uncaught-exception handler records the last crash, so RootView can show it on the
-    /// next launch. TEMPORARY diagnostic for the audio route-change crashes: those raise Obj-C
-    /// NSExceptions that Swift try?/catch can't catch and that leave NO .ips log when "Share iPhone
-    /// Analytics" is off, so we capture the exact reason in-app instead of guessing.
-    static var crashLogURL: URL {
-        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("LumaLastCrash.txt")
-    }
-
-    /// Records uncaught Obj-C NSExceptions (e.g. AVFoundation "required condition is false"
-    /// assertions raised while an audio route is settling). The app still aborts, but the name +
-    /// reason + top stack frames are written synchronously so they survive to the next launch.
-    private static func installCrashCapture() {
-        NSSetUncaughtExceptionHandler { exception in
-            let text = """
-            \(exception.name.rawValue)
-
-            \(exception.reason ?? "(no reason)")
-
-            \(exception.callStackSymbols.prefix(24).joined(separator: "\n"))
-            """
-            try? text.data(using: .utf8)?.write(to: LumaApp.crashLogURL, options: .atomic)
-        }
-    }
-
     init() {
-        LumaApp.installCrashCapture()
         let schema = Schema([Track.self, Album.self, Artist.self, Playlist.self, PlaylistEntry.self])
         let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         let created: ModelContainer
@@ -110,35 +84,11 @@ struct LumaApp: App {
 // Thin bootstrap view: picks the platform-appropriate shell. AppContainer is created and
 // owned by the App and injected via the environment.
 struct RootView: View {
-    /// TEMPORARY: the last captured crash (NSException name + reason + stack), shown once so it can
-    /// be reported. Cleared on dismiss. Remove together with LumaApp.installCrashCapture once the
-    /// route-change crash is fixed.
-    @State private var lastCrash: String?
-
     var body: some View {
-        Group {
-            #if os(macOS)
-            MacRootView()
-            #else
-            MainTabView()
-            #endif
-        }
-        .onAppear {
-            if let data = try? Data(contentsOf: LumaApp.crashLogURL),
-               let text = String(data: data, encoding: .utf8), !text.isEmpty {
-                lastCrash = text
-            }
-        }
-        .alert("Letzter Absturz (bitte als Screenshot melden)", isPresented: Binding(
-            get: { lastCrash != nil },
-            set: { if !$0 { lastCrash = nil } }
-        )) {
-            Button("Verwerfen", role: .cancel) {
-                try? FileManager.default.removeItem(at: LumaApp.crashLogURL)
-                lastCrash = nil
-            }
-        } message: {
-            Text(lastCrash ?? "")
-        }
+        #if os(macOS)
+        MacRootView()
+        #else
+        MainTabView()
+        #endif
     }
 }
