@@ -3,6 +3,9 @@ import SwiftUI
 struct QueueView: View {
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
+    #if os(macOS)
+    @Environment(MacNavigationState.self) private var macNav
+    #endif
 
     private var upNext: [Track] { app.queue.upNext }
 
@@ -10,9 +13,6 @@ struct QueueView: View {
         VStack(spacing: 0) {
             queueHeader
             queueList
-            #if os(macOS)
-            queueVolumeBar
-            #endif
         }
         .background(Color.lumaBackground.ignoresSafeArea())
     }
@@ -24,18 +24,32 @@ struct QueueView: View {
             HStack {
                 Text("Warteschlange")
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.lumaInk())
                 Spacer()
 
                 #if os(iOS)
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(.lumaInk(0.85))
                         .frame(width: 30, height: 30)
-                        .background(Color.white.opacity(0.1), in: Circle())
+                        .background(Color.lumaInk(0.1), in: Circle())
                 }
                 .buttonStyle(.plain)
+                #elseif os(macOS)
+                // Retract (hide) the queue inspector — NOT dismiss(): inside an `.inspector`,
+                // `dismiss()` tears down the whole WINDOW (it was closing the entire app), so flip
+                // the same nav flag the now-playing-bar button and ⌥⌘Q toggle use. `sidebar.right`
+                // reads as "collapse the right panel".
+                Button { macNav.showingQueue = false } label: {
+                    Image(systemName: "sidebar.right")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.lumaInk(0.7))
+                        .frame(width: 26, height: 26)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Warteschlange ausblenden")
                 #endif
             }
 
@@ -50,18 +64,25 @@ struct QueueView: View {
                         app.player.stop()
                         dismiss()
                     }
+                    #if os(iOS) || os(visionOS)
                     .frame(width: 120)
+                    #endif
 
-                    // Main, safe action — fills the remaining width.
+                    // Main, safe action — fills the remaining width on iOS; a compact pill on macOS.
                     queueActionButton(label: "Neu ordnen", icon: "shuffle",
-                                      tint: .white,
-                                      fill: Color.white.opacity(0.1),
-                                      stroke: Color.white.opacity(0.14)) {
+                                      tint: .lumaInk(),
+                                      fill: Color.lumaInk(0.1),
+                                      stroke: Color.lumaInk(0.14)) {
                         reshuffleQueue()
                     }
                     .disabled(upNext.count < 2)
                     .opacity(upNext.count < 2 ? 0.4 : 1)
                     .accessibilityLabel("Warteschlange neu ordnen")
+
+                    #if os(macOS)
+                    // Compact pills sit left like the Abspielen/Shuffle header; spacer fills the rest.
+                    Spacer(minLength: 0)
+                    #endif
                 }
             }
         }
@@ -70,8 +91,8 @@ struct QueueView: View {
         .padding(.bottom, 14)
     }
 
-    /// One of the large queue actions (Neu ordnen / Leeren), styled like the Abspielen/Shuffle
-    /// pills on album & playlist headers: 48-pt tall, rounded, icon + label.
+    /// One of the queue actions (Neu ordnen / Leeren), styled to MATCH the Abspielen/Shuffle pills:
+    /// compact content-width 32-pt pills on macOS, full-width 48-pt rows on iOS.
     private func queueActionButton(
         label: LocalizedStringKey,
         icon: String,
@@ -80,17 +101,28 @@ struct QueueView: View {
         stroke: Color,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        #if os(macOS)
+        let corner: CGFloat = 9
+        #else
+        let corner: CGFloat = 14
+        #endif
+        return Button(action: action) {
             Label(label, systemImage: icon)
+                #if os(macOS)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 20)
+                .frame(height: 32)
+                #else
                 .font(.system(size: 16, weight: .semibold))
                 .tracking(-0.25)
                 .frame(maxWidth: .infinity)
                 .frame(height: 48)
+                #endif
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous).fill(fill)
+                    RoundedRectangle(cornerRadius: corner, style: .continuous).fill(fill)
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
                         .strokeBorder(stroke, lineWidth: 0.5)
                 }
                 .foregroundStyle(tint)
@@ -117,39 +149,38 @@ struct QueueView: View {
             Section {
                 if upNext.isEmpty {
                     Text("Nichts weiteres in der Warteschlange")
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(.lumaInk(0.35))
                         .font(.subheadline)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                 } else {
-                    // A binding + `editActions: .move` gives drag-to-reorder (long-press & drag)
-                    // WITHOUT putting the List into edit mode — and edit mode is exactly what
-                    // suppresses `.swipeActions`. This is what lets reordering and swipe-to-remove
-                    // coexist; forcing edit mode for the old grip-drag killed the swipe.
-                    ForEach(upNextBinding, id: \.id, editActions: .move) { $track in
-                        TrackRow(track: track, showArtwork: true, showsMenu: false,
-                                 showsDragHandle: true,
-                                 isCurrent: false,
-                                 isPlaying: app.player.state.isPlaying, liked: track.isLiked) {
-                            Task { await app.queue.play(track) }
-                        }
-                        .equatable()
-                        .frame(minHeight: 56)   // taller rows → easier to grab & drag-reorder
-                        .listRowBackground(Color.clear)
-                        .trackRowSeparator()    // hairline between songs, like every other list
-                        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                        // Swipe right-to-left to drop the track from the queue. Tint forced red —
-                        // the app's white accent would otherwise leave the button white-on-white.
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                removeFromQueue(track)
-                            } label: {
-                                Label("Entfernen", systemImage: "minus.circle")
-                            }
-                            .tint(.red)
+                    #if os(macOS)
+                    // macOS: identify rows by POSITION (offset) so a queue that legitimately repeats
+                    // a track can still be reordered/removed per-slot. The old `id: \.id` form
+                    // collided on duplicate tracks, and the id-based remove dropped the WRONG/extra
+                    // occurrence ("removes the song after"). `.onMove` drives drag-reorder natively
+                    // (no edit mode needed on macOS); the hover-✕ / right-click removes by offset.
+                    ForEach(Array(upNext.enumerated()), id: \.offset) { offset, track in
+                        upNextRow(track) {
+                            app.queue.removeUpNext(at: offset)
+                            app.savePlaybackState()
                         }
                     }
+                    .onMove { from, to in
+                        app.queue.moveUpNext(fromOffsets: from, toOffset: to)
+                        app.savePlaybackState()
+                    }
+                    #else
+                    // iOS: a binding + `editActions: .move` gives drag-to-reorder WITHOUT edit mode —
+                    // edit mode is what suppresses `.swipeActions`, so this lets reorder and
+                    // swipe-to-remove coexist.
+                    ForEach(upNextBinding, id: \.id, editActions: .move) { $track in
+                        upNextRow(track) { removeFromQueue(track) }
+                            // iOS: swipe right-to-left to drop the track.
+                            .lumaQueueRemoveSwipe { removeFromQueue(track) }
+                    }
+                    #endif
                 }
             } header: {
                 if !upNext.isEmpty { sectionHeader("ALS NÄCHSTES") }
@@ -164,7 +195,7 @@ struct QueueView: View {
             .font(.system(size: 11, weight: .semibold))
             .tracking(1.6)
             .textCase(nil)
-            .foregroundStyle(.white.opacity(0.4))
+            .foregroundStyle(.lumaInk(0.4))
             .padding(.top, 8)
             .padding(.bottom, 2)
             .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
@@ -173,31 +204,35 @@ struct QueueView: View {
     private func nowPlayingRow(track: Track) -> some View {
         HStack(spacing: 12) {
             ZStack {
-                ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 8, size: 48)
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString ?? track.id.uuidString, cornerRadius: 6, size: 40)
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(.black.opacity(0.4))
-                    .frame(width: 48, height: 48)
-                Image(systemName: "waveform")
-                    .symbolEffect(.variableColor.iterative, isActive: app.player.state.isPlaying)
+                    .frame(width: 40, height: 40)
+                NowPlayingGlyph(isActive: app.player.state.isPlaying,
+                                size: 14, weight: .medium, tint: .lumaAccent)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(track.title)
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.lumaAccent)
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(track.title)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(Color.lumaAccent)
                     .lineLimit(1)
-                Text(track.artistName)
-                    .font(.caption)
-                    .foregroundStyle(.white.opacity(0.5))
+                Text(nowPlayingSubtitle(track))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.lumaInk(0.5))
                     .lineLimit(1)
             }
             Spacer()
             Text(track.formattedDuration)
                 .font(.caption.monospacedDigit())
-                .foregroundStyle(.white.opacity(0.35))
+                .foregroundStyle(.lumaInk(0.35))
         }
-        .frame(minHeight: 60)
+        .frame(minHeight: 50)
+    }
+
+    /// "Artist — Album" (Apple-Music style), falling back to just the artist when no album.
+    private func nowPlayingSubtitle(_ track: Track) -> String {
+        let album = track.albumTitle.trimmingCharacters(in: .whitespaces)
+        return album.isEmpty ? track.artistName : "\(track.artistName) — \(album)"
     }
 
     // MARK: - Reorder / Delete
@@ -225,26 +260,37 @@ struct QueueView: View {
         )
     }
 
+    /// One up-next row, shared by the macOS (offset-keyed) and iOS (binding) lists. The remove
+    /// action is injected so each platform can target the right slot (macOS by offset, iOS by id).
+    @ViewBuilder
+    private func upNextRow(_ track: Track, remove: @escaping () -> Void) -> some View {
+        TrackRow(track: track, showArtwork: true,
+                 // Show "Artist — Album" under the title (Apple-Music queue style).
+                 showAlbum: true,
+                 showsMenu: false,
+                 showsDragHandle: true,
+                 isCurrent: false,
+                 // Up-next rows are never the current track, so the waveform never shows here —
+                 // pass constant false so play/pause doesn't change their Equatable key and
+                 // re-render every queue row.
+                 isPlaying: false, liked: track.isLiked,
+                 // Right-click + macOS hover-✕ remove (iOS also has the swipe below).
+                 remove: TrackRowRemove(label: "Aus Warteschlange entfernen",
+                                        systemImage: "minus.circle", action: remove),
+                 onTap: {
+            Task { await app.queue.play(track) }
+        })
+        .equatable()
+        .lumaSongRowMinHeight(48)
+        .listRowBackground(Color.clear)
+        .trackRowSeparator()    // hairline between songs, like every other list
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+    }
+
+    /// iOS swipe-to-remove path (by identity). macOS removes by position via `removeUpNext(at:)`,
+    /// which handles a queue that legitimately repeats a track.
     private func removeFromQueue(_ track: Track) {
         app.queue.removeTrack(id: track.id)
         app.savePlaybackState()
     }
 }
-
-#if os(macOS)
-private extension QueueView {
-    /// Volume control pinned to the bottom of the queue (macOS — no hardware volume keys
-    /// route to the app like on iOS).
-    var queueVolumeBar: some View {
-        HStack(spacing: 10) {
-            LumaVolumeControl(width: 150)
-            Spacer()
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .overlay(alignment: .top) {
-            Rectangle().fill(.white.opacity(0.08)).frame(height: 0.5)
-        }
-    }
-}
-#endif

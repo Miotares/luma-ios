@@ -1,8 +1,10 @@
 import SwiftUI
 import SwiftData
 import AVFoundation
+import ImageIO
 #if os(iOS) || os(visionOS)
 import AVKit
+import UIKit
 #endif
 
 struct PlayerView: View {
@@ -78,6 +80,7 @@ struct PlayerView: View {
                             .foregroundStyle(.white)
                     }
                 }
+                .accessibilityLabel("Player schließen")
                 Spacer()
                 VStack(spacing: 1) {
                     Text("Wird gespielt")
@@ -98,6 +101,7 @@ struct PlayerView: View {
                             .foregroundStyle(.white)
                     }
                 }
+                .accessibilityLabel("Weitere Optionen")
             }
             .padding(.horizontal, 28)
             .padding(.top, 10)
@@ -105,7 +109,7 @@ struct PlayerView: View {
             Spacer(minLength: 28)
 
             // Artwork — responsive, scales with play state
-            ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 22, size: nil)
+            ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString ?? track.id.uuidString, cornerRadius: 22, size: nil)
                 .aspectRatio(1, contentMode: .fit)
                 .padding(.horizontal, 28)
                 .shadow(color: .black.opacity(0.75), radius: 45, y: 36)
@@ -134,7 +138,11 @@ struct PlayerView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
-                    .onTapGesture { showNavOptions = true }
+                    // Only open the navigation dialog when there's actually somewhere to go —
+                    // otherwise it shows a dialog whose only button is Cancel.
+                    .onTapGesture {
+                        if track.album != nil || track.artist != nil { showNavOptions = true }
+                    }
                     Spacer(minLength: 12)
                     PlayerLikeButton(track: track)
                 }
@@ -232,7 +240,7 @@ struct PlayerView: View {
                 }
             }
             Button { app.player.startSleepTimerEndOfTrack() } label: {
-                Label("Ende des Titels", systemImage: "text.append")
+                Label("Titelende", systemImage: "text.append")
             }
         } label: {
             Label("Sleep-Timer", systemImage: "moon.zzz")
@@ -280,13 +288,25 @@ struct ArtworkBackground: View {
 
     private func decode(_ data: Data?) async -> Image? {
         guard let data else { return nil }
-        return await Task.detached(priority: .userInitiated) {
+        // Decode a DOWNSAMPLED bitmap, not the full cover. This view is blurred (radius 64) and
+        // overscanned, so a ~400 px source is indistinguishable from the stored ~1024 px+ image but
+        // costs a fraction of the CPU/IO. The old full-res `UIImage(data:)` was a heavy spike at
+        // EVERY track change — landing exactly on the crossfade transition, concurrent with the
+        // incoming track's decode + read-ahead — so it could starve the audio pipeline. Also dropped
+        // to `.utility` so it yields to the (user-initiated) playback work.
+        return await Task.detached(priority: .utility) {
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  let cg = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                      kCGImageSourceCreateThumbnailFromImageAlways: true,
+                      kCGImageSourceCreateThumbnailWithTransform: true,
+                      kCGImageSourceShouldCacheImmediately: true,
+                      kCGImageSourceThumbnailMaxPixelSize: 400,
+                  ] as CFDictionary)
+            else { return nil }
             #if os(iOS) || os(visionOS)
-            guard let ui = UIImage(data: data) else { return nil }
-            return Image(uiImage: ui)
+            return Image(uiImage: UIImage(cgImage: cg))
             #elseif os(macOS)
-            guard let ns = NSImage(data: data) else { return nil }
-            return Image(nsImage: ns)
+            return Image(nsImage: NSImage(cgImage: cg, size: .zero))
             #else
             return nil
             #endif
@@ -342,6 +362,10 @@ struct PlayerScrubber: View {
                             dragProgress = max(0, min(1, v.location.x / geo.size.width))
                         }
                         .onEnded { v in
+                            // If the track changed mid-drag, onChange(currentTrack) below already
+                            // cleared isDragging — the gesture lives on, so guard here or .onEnded
+                            // would seek the NEW track to where the finger happened to be.
+                            guard isDragging else { return }
                             let p = max(0, min(1, v.location.x / geo.size.width))
                             app.player.seek(to: p * duration)
                             withAnimation(.easeOut(duration: 0.1)) { isDragging = false }
@@ -363,6 +387,9 @@ struct PlayerScrubber: View {
                     .foregroundStyle(.white.opacity(0.45))
             }
         }
+        // If the track changes mid-drag (auto-advance / ended), abandon the drag — otherwise
+        // .onEnded would seek `progress * newDuration` on a track the user never scrubbed.
+        .onChange(of: app.player.currentTrack?.id) { if isDragging { isDragging = false } }
     }
 
     private func format(_ t: TimeInterval) -> String {
@@ -457,6 +484,7 @@ struct PlayerLikeButton: View {
                 .frame(width: 44, height: 44)
                 .animation(nil, value: track.isLiked)
         }
+        .accessibilityLabel(track.isLiked ? "Aus Liked entfernen" : "Zu Liked hinzufügen")
     }
 }
 
@@ -465,15 +493,25 @@ struct PlayerTransport: View {
     @Environment(AppContainer.self) private var app
     private var isPlaying: Bool { app.player.state.isPlaying }
 
+    private var repeatModeLabel: LocalizedStringKey {
+        switch app.queue.repeatMode {
+        case .off: return "Aus"
+        case .one: return "Titel wiederholen"
+        case .all: return "Alle wiederholen"
+        }
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            Button { app.queue.toggleShuffle() } label: {
+            Button { app.queue.toggleShuffle(); app.savePlaybackState() } label: {
                 Image(systemName: "shuffle")
                     .font(.system(size: 20))
                     .foregroundStyle(app.queue.shuffleMode == .on ? Color.lumaAccent : Color.white.opacity(0.4))
             }
             .frame(width: 44, height: 44)
             .frame(maxWidth: .infinity)
+            .accessibilityLabel("Zufallswiedergabe")
+            .accessibilityValue(app.queue.shuffleMode == .on ? "An" : "Aus")
 
             Button { Task { await app.queue.playPrevious() } } label: {
                 Image(systemName: "backward.fill")
@@ -482,6 +520,7 @@ struct PlayerTransport: View {
             }
             .frame(width: 52, height: 52)
             .frame(maxWidth: .infinity)
+            .accessibilityLabel("Vorheriger Titel")
 
             Button { app.player.togglePlayPause() } label: {
                 ZStack {
@@ -496,6 +535,7 @@ struct PlayerTransport: View {
                 .animation(nil, value: isPlaying)   // instant play↔pause, no slow morph/slide
             }
             .frame(maxWidth: .infinity)
+            .accessibilityLabel(isPlaying ? "Pause" : "Wiedergabe")
 
             Button { Task { await app.queue.advance() } } label: {
                 Image(systemName: "forward.fill")
@@ -504,14 +544,21 @@ struct PlayerTransport: View {
             }
             .frame(width: 52, height: 52)
             .frame(maxWidth: .infinity)
+            .accessibilityLabel("Nächster Titel")
+            // At the end of the queue (repeat off) advance() would stop() → the player drops to
+            // "Nothing Playing". Disable forward there instead of silently dismissing the player.
+            .disabled(!app.queue.hasNext)
+            .opacity(app.queue.hasNext ? 1 : 0.35)
 
-            Button { app.queue.toggleRepeat() } label: {
+            Button { app.queue.toggleRepeat(); app.savePlaybackState() } label: {
                 Image(systemName: app.queue.repeatMode == .one ? "repeat.1" : "repeat")
                     .font(.system(size: 20))
                     .foregroundStyle(app.queue.repeatMode == .off ? Color.white.opacity(0.4) : Color.lumaAccent)
             }
             .frame(width: 44, height: 44)
             .frame(maxWidth: .infinity)
+            .accessibilityLabel("Wiederholen")
+            .accessibilityValue(repeatModeLabel)
         }
     }
 }
@@ -540,6 +587,7 @@ struct SleepTimerIndicator: View {
                 .glassEffect(.regular, in: .capsule)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Sleep-Timer, zum Beenden tippen")
         }
     }
 
@@ -571,13 +619,16 @@ struct OutputDeviceLabel: View {
 
     static func currentName() -> String {
         #if os(iOS) || os(visionOS)
-        guard let output = AVAudioSession.sharedInstance().currentRoute.outputs.first else { return "Ausgabe" }
+        guard let output = AVAudioSession.sharedInstance().currentRoute.outputs.first else {
+            return String(localized: "Ausgabe")
+        }
         switch output.portType {
-        case .builtInSpeaker, .builtInReceiver: return "iPhone"
+        // Use the actual device name ("iPhone" / "iPad") rather than a hardcoded "iPhone".
+        case .builtInSpeaker, .builtInReceiver: return UIDevice.current.model
         default: return output.portName
         }
         #else
-        return "Ausgabe"
+        return String(localized: "Ausgabe")
         #endif
     }
 }

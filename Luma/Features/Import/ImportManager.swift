@@ -217,14 +217,12 @@ final class ImportManager {
             genre: metadata.genre
         )
 
-        // Store artwork if album doesn't have it yet: a small thumbnail inline on the row,
-        // the full-resolution original on disk in ArtworkCache (keyed by album id).
+        // Store the cover (downscaled ~1024px thumbnail) inline on the album row if it has none yet.
+        // We deliberately do NOT also keep a full-resolution copy on disk: nothing reads it (every
+        // surface, incl. the full-screen player, caps decoding at ~1024px = the inline thumbnail),
+        // so it was a write-only disk leak. See LegacyArtworkCleanup for purging the old files.
         if album.artworkData == nil, let raw = metadata.artworkData {
             album.artworkData = metadata.artworkThumbnail ?? raw
-            // Hoist the Sendable id off the main actor — reading album.id (a non-Sendable
-            // @Model) inside the detached task would be a data race during bulk import.
-            let albumID = album.id
-            Task.detached { await ArtworkCache.shared.store(raw, for: albumID) }
         }
 
         let track = Track(

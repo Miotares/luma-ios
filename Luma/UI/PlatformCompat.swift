@@ -57,17 +57,35 @@ extension View {
         self
         #endif
     }
+
+    /// macOS: a toolbar search field that filters the songs of a detail list (album / playlist).
+    /// iOS: no-op — the iOS detail views are intentionally left unchanged. `text` is bound on both
+    /// platforms so the call site compiles cross-platform; on iOS nothing is shown, so the bound
+    /// text stays empty and the shared filtering below is a no-op there.
+    @ViewBuilder func lumaDetailSongSearch(_ text: Binding<String>, prompt: LocalizedStringKey) -> some View {
+        #if os(macOS)
+        searchable(text: text, placement: .toolbar, prompt: prompt)
+        #else
+        self
+        #endif
+    }
 }
 
 // MARK: - Gallery grid columns
 
-/// Album / playlist gallery columns: 4 across on macOS (wide window), 2 on iOS.
+/// Album / playlist gallery columns. macOS is width-responsive (`.adaptive`) so a resized
+/// window flows more or fewer cards instead of stretching a fixed 4 — the desktop expectation.
+/// iOS stays a fixed 2-up grid sized for the phone.
 #if os(macOS)
-let lumaGalleryColumnCount = 4
+let lumaGalleryColumnCount = 4   // retained for callers that need a nominal count
 #else
 let lumaGalleryColumnCount = 2
 #endif
 
 func lumaGalleryColumns(spacing: CGFloat) -> [GridItem] {
-    Array(repeating: GridItem(.flexible(), spacing: spacing), count: lumaGalleryColumnCount)
+    #if os(macOS)
+    return [GridItem(.adaptive(minimum: 156, maximum: 220), spacing: spacing)]
+    #else
+    return Array(repeating: GridItem(.flexible(), spacing: spacing), count: lumaGalleryColumnCount)
+    #endif
 }

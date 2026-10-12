@@ -44,10 +44,10 @@ struct TrackSelectionBar: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
                 .background(
-                    Color.white.opacity(isEmpty ? 0.04 : 0.12),
+                    Color.lumaInk(isEmpty ? 0.04 : 0.12),
                     in: RoundedRectangle(cornerRadius: 13, style: .continuous)
                 )
-                .foregroundStyle(isEmpty ? Color.white.opacity(0.3) : .white)
+                .foregroundStyle(isEmpty ? Color.lumaInk(0.3) : .lumaInk())
         }
         .buttonStyle(.plain)
         .disabled(isEmpty)
@@ -65,11 +65,15 @@ struct PlaylistPickerSheet: View {
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Playlist.sortIndex) private var playlists: [Playlist]
+    @Query(playlistTracksDescriptor()) private var playlistTracks: [Track]
     @State private var showingCreate = false
     @State private var newName = ""
 
     var body: some View {
-        NavigationStack {
+        // Resolve entries through the safe inverse so the count matches the gallery/detail (which
+        // show resolved tracks), not all entries incl. unimported placeholders.
+        let map = validEntryTrackMap(playlistTracks)
+        return NavigationStack {
             List {
                 Section {
                     Button {
@@ -79,7 +83,7 @@ struct PlaylistPickerSheet: View {
                             .foregroundStyle(Color.lumaAccent)
                     }
                 }
-                .listRowBackground(Color.white.opacity(0.05))
+                .listRowBackground(Color.lumaInk(0.05))
 
                 if !playlists.isEmpty {
                     Section {
@@ -90,16 +94,16 @@ struct PlaylistPickerSheet: View {
                             } label: {
                                 HStack {
                                     Text(playlist.name)
-                                        .foregroundStyle(.white)
+                                        .foregroundStyle(.lumaInk())
                                     Spacer()
-                                    Text(CountText.songs(playlist.entries.count))
+                                    Text(CountText.songs(playlist.safeSortedTracks(using: map).count))
                                         .font(.subheadline)
-                                        .foregroundStyle(.white.opacity(0.4))
+                                        .foregroundStyle(.lumaInk(0.4))
                                 }
                             }
                         }
                     }
-                    .listRowBackground(Color.white.opacity(0.05))
+                    .listRowBackground(Color.lumaInk(0.05))
                 }
             }
             .scrollContentBackground(.hidden)
@@ -123,7 +127,7 @@ struct PlaylistPickerSheet: View {
                 Button("Abbrechen", role: .cancel) { newName = "" }
             }
         }
-        .preferredColorScheme(.dark)
+        .lumaForcedAppearance()
         .presentationDetents([.medium, .large])
     }
 }

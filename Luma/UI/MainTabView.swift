@@ -1,13 +1,7 @@
 import SwiftUI
 
-// MARK: - Design Tokens
-
-extension Color {
-    static let lumaBackground = Color(red: 0.051, green: 0.051, blue: 0.067)
-    static let lumaSurface    = Color(red: 0.098, green: 0.102, blue: 0.133)
-    static let lumaAccent     = Color.white   // neutral accent — app-wide, no blue tint
-    static let lumaToggle     = Color(red: 0.22, green: 0.80, blue: 0.46) // readable "on" for switches (white tint is invisible on dark)
-}
+// Design tokens (lumaBackground / lumaSurface / lumaAccent / lumaInk …) live in
+// UI/Theme/LumaTheme.swift — appearance-adaptive so macOS can follow the system light/dark.
 
 // MARK: - Open Now Playing Environment Key
 
@@ -88,21 +82,26 @@ struct MainTabView: View {
     @State private var playlistsPath = NavigationPath()
     @State private var settingsPath = NavigationPath()
     @State private var libraryResetSignal = 0
-    /// Album/artist the player asked to open; performed after the player sheet finishes dismissing.
-    @State private var pendingLibraryTarget: LibraryNavTarget?
 
     private var miniPlayerActive: Bool { app.player.isActive }
 
-    /// Push the album/artist the player requested onto the Mediathek tab, once the player sheet
-    /// has fully dismissed — opening it as a normal full page, just like from the home screen.
-    private func openPendingLibraryTarget() {
-        guard let target = pendingLibraryTarget else { return }
-        pendingLibraryTarget = nil
+    /// The player asks to open an album/artist as a full page on the Mediathek tab (just like from
+    /// the home screen). Put the destination in place FIRST — while the player sheet is still fully
+    /// up and stable, where pushing is reliable — then close the player on the NEXT runloop tick.
+    /// The sheet then slides away to REVEAL the already-built page, instead of waiting for the full
+    /// dismissal to finish and only THEN pushing (three serial animations = the laggy feel).
+    ///
+    /// The async hop is essential: doing the push and `showingPlayer = false` in one transaction
+    /// would mutate the path WHILE the sheet tears down, which can drop the push (the failure the
+    /// old deferred-onDismiss approach worked around). Splitting them into two transactions lets the
+    /// push commit against a stable tree first.
+    private func openLibraryFromPlayer(_ target: LibraryNavTarget) {
         selectedTab = .library
         switch target {
         case .album(let album):   libraryPath.append(album)
         case .artist(let artist): libraryPath.append(artist)
         }
+        DispatchQueue.main.async { showingPlayer = false }
     }
 
     /// Tapping the already-selected tab pops it to root; on Mediathek it also resets
@@ -130,12 +129,12 @@ struct MainTabView: View {
                 NavigationStack(path: $libraryPath) { LibraryView(resetSignal: libraryResetSignal) }
                     .lumaMiniPlayer(isActive: miniPlayerActive) { showingPlayer = true }
             }
-            Tab(LumaTab.playlists.title, systemImage: LumaTab.playlists.icon, value: .playlists) {
-                NavigationStack(path: $playlistsPath) { PlaylistsView() }
-                    .lumaMiniPlayer(isActive: miniPlayerActive) { showingPlayer = true }
-            }
             Tab(LumaTab.search.title, systemImage: LumaTab.search.icon, value: .search) {
                 NavigationStack(path: $searchPath) { SearchView() }
+                    .lumaMiniPlayer(isActive: miniPlayerActive) { showingPlayer = true }
+            }
+            Tab(LumaTab.playlists.title, systemImage: LumaTab.playlists.icon, value: .playlists) {
+                NavigationStack(path: $playlistsPath) { PlaylistsView() }
                     .lumaMiniPlayer(isActive: miniPlayerActive) { showingPlayer = true }
             }
             Tab(LumaTab.settings.title, systemImage: LumaTab.settings.icon, value: .settings) {
@@ -145,15 +144,13 @@ struct MainTabView: View {
         }
         .tint(Color.lumaAccent)
         .environment(\.openNowPlaying) { showingPlayer = true }
-        .environment(\.openLibraryItem) { target in
-            // Defer navigation to the player's onDismiss: mutating the tab + path WHILE the sheet
-            // is mid-dismiss races the dismissal animation and the push can be dropped. Stash the
-            // target, close the player, and navigate once it's fully gone.
-            pendingLibraryTarget = target
-            showingPlayer = false
-        }
-        .sheet(isPresented: $showingPlayer, onDismiss: openPendingLibraryTarget) {
+        .sheet(isPresented: $showingPlayer) {
             PlayerView()
+                // Inject the "open album/artist" action directly on the sheet's CONTENT. Environment
+                // values applied mid-tree (e.g. on the TabView above) do NOT cross the sheet boundary
+                // here — same reason every other sheet re-injects `.environment(app)`. Without this,
+                // PlayerView sees the default no-op and the "Album/Künstler anzeigen" buttons are dead.
+                .environment(\.openLibraryItem, openLibraryFromPlayer)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationBackground(.clear)
@@ -172,8 +169,26 @@ extension View {
     /// Bottom inset so the floating tab bar and mini-player never cover the last
     /// scrolled item. The two values are tuned by eye — adjust if a gap or overlap shows.
     func lumaScrollClearance(playerActive: Bool, top: CGFloat = 0) -> some View {
-        contentMargins(.bottom, playerActive ? 92 : 50, for: .scrollContent)
+        #if os(macOS)
+        // macOS `List` (NSTableView-backed) doesn't reliably honor
+        // `contentMargins(.bottom, …, for: .scrollContent)`, so the floating player pill covered
+        // the last row. A clear bottom safe-area inset spacer reliably reserves the space for
+        // BOTH List and ScrollView. ~96pt clears the ~66pt pill + its 12pt bottom inset + a gap.
+        return self
+            .safeAreaInset(edge: .top, spacing: 0) {
+                // `List` ignores contentMargins(.top, .scrollContent) on macOS, so the header's
+                // ~22pt bottom fade covered the first row (e.g. the Play/Shuffle header). Reserve
+                // the top via a safe-area spacer instead; +12 over the requested inset clears the
+                // fade with a gap (0 when nothing was requested — those views pad their own top).
+                Color.clear.frame(height: top > 0 ? top + 12 : 0)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Color.clear.frame(height: playerActive ? 104 : 16)
+            }
+        #else
+        return contentMargins(.bottom, playerActive ? 92 : 50, for: .scrollContent)
             .contentMargins(.top, top, for: .scrollContent)
+        #endif
     }
 }
 
@@ -218,7 +233,7 @@ struct LumaBackButton: View {
         Button(action: action) {
             Image(systemName: "chevron.left")
                 .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.lumaInk())
                 .frame(width: 36, height: 36)
                 // Without this the hit area collapses to the glyph (the glass circle is
                 // decoration, not a tappable fill) — taps miss and the button feels dead.
@@ -249,10 +264,39 @@ struct PressableButtonStyle: ButtonStyle {
 /// Row press-highlight style (replaces List cell highlight)
 struct LumaRowStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
+        #if os(macOS)
+        LumaRowStyleBody(configuration: configuration)
+        #else
         configuration.label
-            .background(configuration.isPressed ? Color.white.opacity(0.06) : Color.clear)
+            .background(configuration.isPressed ? Color.lumaInk(0.06) : Color.clear)
             .contentShape(Rectangle())
+        #endif
     }
+
+    #if os(macOS)
+    /// macOS rows get an INSET, rounded hover/press pill (Apple-Music / Finder style) instead of a
+    /// full-bleed bar. A full-width highlight ran flush to the translucent sidebar (the detail
+    /// column spans the whole window width under it) and bled under the navbar; insetting the pill
+    /// keeps the marker inside the main view with a clear margin from the sidebar. Hover feedback
+    /// mirrors the track rows so every list reacts the same way. The hit area stays full-width
+    /// (contentShape on the label) so clicking anywhere in the row still triggers it.
+    private struct LumaRowStyleBody: View {
+        let configuration: Configuration
+        @State private var isHovered = false
+        var body: some View {
+            configuration.label
+                .contentShape(Rectangle())
+                .background {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(configuration.isPressed ? Color.lumaInk(0.09)
+                              : (isHovered ? Color.lumaInk(0.05) : Color.clear))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                }
+                .onHover { isHovered = $0 }
+        }
+    }
+    #endif
 }
 
 /// Thin separator used between rows
@@ -261,8 +305,36 @@ struct LumaSeparator: View {
 
     var body: some View {
         Rectangle()
-            .fill(.white.opacity(0.07))
+            .fill(.lumaInk(0.07))
             .frame(height: 0.5)
             .padding(.leading, leadingPad)
+    }
+}
+
+/// Shared empty-state content (icon + title + optional subtitle) so every "nothing here" screen
+/// looks identical — previously Search, Liked Songs, Playlists and the smart lists each rolled
+/// their own sizes/weights/alignment. Content-only: the caller supplies the surrounding layout
+/// (Spacers, a ScrollView, or a list row) for its context.
+struct LumaEmptyState: View {
+    let icon: String
+    let title: LocalizedStringKey
+    var subtitle: LocalizedStringKey? = nil
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: icon)
+                .font(.system(size: 52))
+                .foregroundStyle(.lumaInk(0.15))
+            Text(title)
+                .font(.title3.bold())
+                .foregroundStyle(.lumaInk(0.35))
+            if let subtitle {
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.lumaInk(0.2))
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 }

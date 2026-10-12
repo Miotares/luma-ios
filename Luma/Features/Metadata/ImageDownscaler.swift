@@ -4,8 +4,8 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// Downscales raw cover-art bytes to a compact JPEG so the copy stored inline on the Album
-/// row stays small (~1024 px on the long edge). The full-resolution original is kept
-/// separately on disk in `ArtworkCache`, keyed by album id.
+/// row stays small (~1024 px on the long edge) — this inline thumbnail is the only persisted
+/// copy (every surface, incl. the full-screen player, renders it; no full-res copy is kept).
 ///
 /// Uses ImageIO thumbnailing, which decodes the source at the reduced size instead of
 /// inflating the full bitmap into memory — cheap enough to run per track in the off-actor

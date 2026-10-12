@@ -25,6 +25,11 @@ struct SettingsView: View {
     @AppStorage(MediaStorage.backupDefaultsKey) private var backupEnabled = false
     @AppStorage(AudioPlayer.crossfadeDefaultsKey) private var crossfade: Double = 0
     @AppStorage(MainTabView.startupTabKey) private var startupTab = LumaTab.library.rawValue
+    #if os(macOS)
+    @AppStorage(LumaAppearance.storageKey) private var macAppearance = LumaAppearance.system.rawValue
+    /// Non-nil holds the result message of a duplicate-removal pass (drives a result alert).
+    @State private var dedupResult: String?
+    #endif
 
     private var totalDuration: TimeInterval { tracks.reduce(0) { $0 + $1.duration } }
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—" }
@@ -37,6 +42,8 @@ struct SettingsView: View {
                     #if os(macOS)
                     sectionLabel("Musikordner")
                     folderBlock
+                    sectionLabel("Darstellung")
+                    appearanceBlock
                     #else
                     sectionLabel("Import")
                     importBlock
@@ -63,10 +70,13 @@ struct SettingsView: View {
                     sectionLabel("App")
                     appBlock
                     sectionLabel("Daten")
+                    #if os(macOS)
+                    dedupBlock
+                    #endif
                     dangerBlock
                     Text("Entfernt alle Titel, Alben und Künstler samt der importierten Audiodateien.")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(.lumaInk(0.35))
                         .padding(.horizontal, 20)
                         .padding(.top, 8)
                         .padding(.bottom, 28)
@@ -88,6 +98,14 @@ struct SettingsView: View {
         } message: {
             Text("Entfernt alle \(tracks.count) Titel. Kann nicht rückgängig gemacht werden.")
         }
+        #if os(macOS)
+        .alert("Doppelte Titel", isPresented: Binding(
+            get: { dedupResult != nil }, set: { if !$0 { dedupResult = nil } })) {
+            Button("OK", role: .cancel) { dedupResult = nil }
+        } message: {
+            Text(dedupResult ?? "")
+        }
+        #endif
     }
 
     // MARK: - Header
@@ -97,7 +115,7 @@ struct SettingsView: View {
             Text("Einstellungen")
                 .font(.system(size: 34, weight: .bold))
                 .tracking(-0.6)
-                .foregroundStyle(.white)
+                .foregroundStyle(.lumaInk())
             Spacer()
         }
         .padding(.horizontal, 20)
@@ -110,7 +128,7 @@ struct SettingsView: View {
     private func sectionLabel(_ key: String.LocalizationValue) -> some View {
         Text(String(localized: key).uppercased())
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.4))
+            .foregroundStyle(.lumaInk(0.4))
             .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 8)
@@ -139,10 +157,10 @@ struct SettingsView: View {
             Toggle(isOn: $backupEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Im iCloud-Backup sichern")
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.lumaInk())
                     Text("Importierte Titel ins Backup einschließen. Standardmäßig aus, um das Backup klein zu halten.")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(.lumaInk(0.4))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -167,15 +185,15 @@ struct SettingsView: View {
                     .foregroundStyle(Color.lumaAccent)
                     .frame(width: 28)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Musik importieren").foregroundStyle(.white)
+                    Text("Musik importieren").foregroundStyle(.lumaInk())
                     Text("Dateien oder ganze Ordner aus der Dateien-App")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(.lumaInk(0.4))
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.25))
+                    .foregroundStyle(.lumaInk(0.25))
             }
             .padding(.horizontal, 20)
             .frame(minHeight: 60)
@@ -185,17 +203,59 @@ struct SettingsView: View {
         .padding(.horizontal, 16)
     }
 
+    #if os(macOS)
+    private var appearanceBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // System-Settings-style row: title left, full-width dropdown trailing.
+            HStack {
+                Text("Erscheinungsbild").foregroundStyle(.lumaInk())
+                Spacer()
+                Picker("Erscheinungsbild", selection: $macAppearance) {
+                    ForEach(LumaAppearance.allCases) { option in
+                        Text(option.label).tag(option.rawValue)
+                    }
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .fixedSize()
+            }
+            Text("Hell oder dunkel — oder automatisch dem System folgen.")
+                .font(.caption)
+                .foregroundStyle(.lumaInk(0.4))
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
+    }
+    #endif
+
     private var startBlock: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Start-Ansicht").foregroundStyle(.white)
+        VStack(alignment: .leading, spacing: 8) {
+            #if os(macOS)
+            // System-Settings-style row: title left, full-width dropdown trailing.
+            HStack {
+                Text("Start-Ansicht").foregroundStyle(.lumaInk())
+                Spacer()
+                Picker("Start-Ansicht", selection: $startupTab) {
+                    Text("Mediathek").tag(LumaTab.library.rawValue)
+                    Text("Playlists").tag(LumaTab.playlists.rawValue)
+                }
+                .pickerStyle(.menu)
+                .labelsHidden()
+                .fixedSize()
+            }
+            #else
+            Text("Start-Ansicht").foregroundStyle(.lumaInk())
             Picker("Start-Ansicht", selection: $startupTab) {
                 Text("Mediathek").tag(LumaTab.library.rawValue)
                 Text("Playlists").tag(LumaTab.playlists.rawValue)
             }
             .pickerStyle(.segmented)
+            #endif
             Text("Welcher Tab beim Öffnen der App angezeigt wird.")
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.lumaInk(0.4))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -206,17 +266,17 @@ struct SettingsView: View {
     private var crossfadeBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Cross-Fade").foregroundStyle(.white)
+                Text("Cross-Fade").foregroundStyle(.lumaInk())
                 Spacer()
                 Text(crossfade < 1 ? "Aus" : "\(Int(crossfade)) s")
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(.lumaInk(0.45))
                     .monospacedDigit()
             }
             Slider(value: $crossfade, in: 0...12, step: 1)
                 .tint(Color.lumaAccent)
             Text("Blendet aufeinanderfolgende Titel über die eingestellte Dauer ineinander über. Aus bei 0 s.")
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.lumaInk(0.4))
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 20)
@@ -232,11 +292,11 @@ struct SettingsView: View {
                     .font(.system(size: 15))
                     .foregroundStyle(Color.lumaAccent)
                     .frame(width: 28)
-                Text("Startseite").foregroundStyle(.white)
+                Text("Startseite").foregroundStyle(.lumaInk())
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.25))
+                    .foregroundStyle(.lumaInk(0.25))
             }
             .padding(.horizontal, 20)
             .frame(minHeight: 50)
@@ -254,11 +314,11 @@ struct SettingsView: View {
                     .font(.system(size: 15))
                     .foregroundStyle(Color.lumaAccent)
                     .frame(width: 28)
-                Text("Smart-Playlists").foregroundStyle(.white)
+                Text("Smart-Playlists").foregroundStyle(.lumaInk())
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.25))
+                    .foregroundStyle(.lumaInk(0.25))
             }
             .padding(.horizontal, 20)
             .frame(minHeight: 50)
@@ -276,13 +336,13 @@ struct SettingsView: View {
                     .font(.system(size: 15))
                     .foregroundStyle(Color.lumaAccent)
                     .frame(width: 28)
-                Text("Equalizer").foregroundStyle(.white)
+                Text("Equalizer").foregroundStyle(.lumaInk())
                 Spacer()
                 Text(app.equalizer.isEnabled ? "An" : "Aus")
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(.lumaInk(0.45))
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.25))
+                    .foregroundStyle(.lumaInk(0.25))
             }
             .padding(.horizontal, 20)
             .frame(minHeight: 50)
@@ -300,11 +360,11 @@ struct SettingsView: View {
                     .font(.system(size: 15))
                     .foregroundStyle(Color.lumaAccent)
                     .frame(width: 28)
-                Text("Statistiken").foregroundStyle(.white)
+                Text("Statistiken").foregroundStyle(.lumaInk())
                 Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.25))
+                    .foregroundStyle(.lumaInk(0.25))
             }
             .padding(.horizontal, 20)
             .frame(minHeight: 50)
@@ -321,6 +381,53 @@ struct SettingsView: View {
         .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal, 16)
     }
+
+    #if os(macOS)
+    private var dedupBlock: some View {
+        Button {
+            removeDuplicates()
+        } label: {
+            HStack {
+                Image(systemName: "square.on.square.dashed")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.lumaAccent)
+                    .frame(width: 28)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Doppelte Titel entfernen").foregroundStyle(.lumaInk())
+                    Text("Mehrfach importierte Titel zusammenführen")
+                        .font(.caption)
+                        .foregroundStyle(.lumaInk(0.4))
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.lumaInk(0.25))
+            }
+            .padding(.horizontal, 20)
+            .frame(minHeight: 50)
+        }
+        .buttonStyle(LumaRowStyle())
+        .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+    }
+
+    /// Merges content-duplicate tracks (same album+title+disc+track no.) into one keeper, preserving
+    /// likes/play-history/playlist membership, then deletes the redundant copies. Shows the result.
+    private func removeDuplicates() {
+        guard let result = try? app.library.removeDuplicateTracks() else {
+            dedupResult = "Die Duplikatsuche ist fehlgeschlagen."
+            return
+        }
+        if result.removed == 0 {
+            dedupResult = "Keine doppelten Titel gefunden."
+        } else {
+            dedupResult = "\(result.removed) doppelte Titel aus \(result.groups) "
+                + (result.groups == 1 ? "Gruppe" : "Gruppen")
+                + " entfernt. Likes, Wiedergabe-Verlauf und Playlist-Zuordnungen wurden zusammengeführt."
+        }
+    }
+    #endif
 
     private var dangerBlock: some View {
         Button(role: .destructive) {
@@ -344,9 +451,9 @@ struct SettingsView: View {
 
     private func infoRow(_ label: LocalizedStringKey, value: String) -> some View {
         HStack {
-            Text(label).foregroundStyle(.white)
+            Text(label).foregroundStyle(.lumaInk())
             Spacer()
-            Text(value).foregroundStyle(.white.opacity(0.45))
+            Text(value).foregroundStyle(.lumaInk(0.45))
         }
         .padding(.horizontal, 20)
         .frame(minHeight: 50)
@@ -355,7 +462,8 @@ struct SettingsView: View {
     // MARK: - Helpers
 
     private func deleteAllTracks() {
-        for track in tracks { try? app.library.delete(track: track) }
+        // One transaction instead of N save+@Query-republish cycles (was an O(n²) freeze).
+        try? app.library.deleteAllTracks()
         Task { await loadStorageUsage() }
     }
 
@@ -394,7 +502,7 @@ extension SettingsView {
             }
             Text("Das App-Icon auf dem Home-Bildschirm. iOS zeigt beim Wechsel einmalig einen Hinweis.")
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.lumaInk(0.4))
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 20)
         }
@@ -417,40 +525,30 @@ extension SettingsView {
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                     .overlay {
                         RoundedRectangle(cornerRadius: 13, style: .continuous)
-                            .strokeBorder(isSelected ? Color.lumaAccent : Color.white.opacity(0.12),
+                            .strokeBorder(isSelected ? Color.lumaAccent : Color.lumaInk(0.12),
                                           lineWidth: isSelected ? 2.5 : 1)
                     }
                 Text(option.title)
                     .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                    .foregroundStyle(isSelected ? .white : .white.opacity(0.5))
+                    .foregroundStyle(isSelected ? .lumaInk() : .lumaInk(0.5))
             }
         }
         .buttonStyle(.plain)
     }
 
-    /// Switches the home-screen icon. The public `setAlternateIconName` always presents a
-    /// system alert ("Du hast das Symbol … geändert.") whose layout we can't control — icon
-    /// flush-left, text flush-right. We switch silently instead and let the selected tile be
-    /// the confirmation. Falls back to the public API if the silent setter is unavailable.
+    /// Switches the home-screen icon via the public `setAlternateIconName`. It presents a
+    /// one-time system alert ("Du hast das Symbol … geändert.") whose layout we can't control,
+    /// which we accept: the private `_setAlternateIconName:completionHandler:` selector that
+    /// suppresses it puts an underscored symbol name in the binary, and App Store static
+    /// analysis flags that as a private-API use (a documented rejection trigger).
     func setAppIcon(_ name: String?) {
         let application = UIApplication.shared
         guard application.supportsAlternateIcons, application.alternateIconName != name else { return }
 
-        let completion: (Error?) -> Void = { error in
+        application.setAlternateIconName(name) { error in
             Task { @MainActor in
                 currentIconName = (error == nil) ? name : application.alternateIconName
             }
-        }
-
-        // `_setAlternateIconName:completionHandler:` is the same switch without the alert.
-        let silentSelector = NSSelectorFromString("_setAlternateIconName:completionHandler:")
-        if application.responds(to: silentSelector) {
-            typealias SilentSetter = @convention(c) (NSObject, Selector, NSString?, @escaping (Error?) -> Void) -> Void
-            let imp = application.method(for: silentSelector)
-            let setter = unsafeBitCast(imp, to: SilentSetter.self)
-            setter(application, silentSelector, name as NSString?, completion)
-        } else {
-            application.setAlternateIconName(name, completionHandler: completion)
         }
     }
 }
@@ -468,10 +566,10 @@ extension SettingsView {
                         .foregroundStyle(Color.lumaAccent)
                         .frame(width: 28)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(url.lastPathComponent).foregroundStyle(.white)
+                        Text(url.lastPathComponent).foregroundStyle(.lumaInk())
                         Text(url.path)
                             .font(.caption)
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(.lumaInk(0.4))
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -482,7 +580,7 @@ extension SettingsView {
                     } label: {
                         Image(systemName: "minus.circle.fill")
                             .font(.system(size: 16))
-                            .foregroundStyle(.white.opacity(0.3))
+                            .foregroundStyle(.lumaInk(0.3))
                     }
                     .buttonStyle(.plain)
                 }
@@ -496,7 +594,7 @@ extension SettingsView {
                         .font(.system(size: 15))
                         .foregroundStyle(Color.lumaAccent)
                         .frame(width: 28)
-                    Text("Ordner hinzufügen").foregroundStyle(.white)
+                    Text("Ordner hinzufügen").foregroundStyle(.lumaInk())
                     Spacer()
                 }
                 .padding(.horizontal, 20)
@@ -511,11 +609,11 @@ extension SettingsView {
                         .foregroundStyle(Color.lumaAccent)
                         .frame(width: 28)
                     Text(app.folderScanner.isScanning ? "Scanne…" : "Jetzt neu scannen")
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.lumaInk())
                     Spacer()
                     if app.folderScanner.isScanning {
                         Text("\(Int(app.folderScanner.progress * 100)) %")
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(.lumaInk(0.4))
                             .monospacedDigit()
                     }
                 }

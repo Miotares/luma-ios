@@ -156,9 +156,7 @@ actor LibraryScanWorker {
         let album = findOrCreateAlbum(title: md.albumTitle, artistName: albumArtistName,
                                       artist: artist, year: md.year, genre: md.genre, cache: &albumCache)
         if album.artworkData == nil, let raw = md.artworkData {
-            album.artworkData = md.artworkThumbnail ?? raw   // small thumbnail inline; full-res in ArtworkCache
-            let albumID = album.id
-            Task.detached { await ArtworkCache.shared.store(raw, for: albumID) }
+            album.artworkData = md.artworkThumbnail ?? raw   // ~1024px thumbnail inline; no full-res copy (it was never read — see LegacyArtworkCleanup)
         }
         let track = Track(
             title: md.title, artistName: md.artistName, albumTitle: md.albumTitle,
@@ -187,13 +185,26 @@ actor LibraryScanWorker {
         track.fileSize = file.size
 
         let albumArtistName = md.albumArtistName ?? md.artistName
-        guard track.albumTitle != md.albumTitle || track.album?.artistName != albumArtistName else { return }
+        let albumUnchanged = track.albumTitle == md.albumTitle && track.album?.artistName == albumArtistName
+        if albumUnchanged {
+            // Same album, but a re-tagged file (changed mod-date/size routes here, not insert) may
+            // have ADDED embedded cover art the album previously lacked. Backfill it so the album
+            // isn't left blank after a rescan.
+            if let album = track.album, album.artworkData == nil, let raw = md.artworkData {
+                album.artworkData = md.artworkThumbnail ?? raw
+            }
+            return
+        }
 
         let oldAlbum = track.album
         let oldArtist = track.artist
         let artist = findOrCreateArtist(albumArtistName, cache: &artistCache)
         let album = findOrCreateAlbum(title: md.albumTitle, artistName: albumArtistName,
                                       artist: artist, year: md.year, genre: md.genre, cache: &albumCache)
+        // A freshly-created (or still-artless) target album gets its cover too — mirrors insert.
+        if album.artworkData == nil, let raw = md.artworkData {
+            album.artworkData = md.artworkThumbnail ?? raw
+        }
         oldAlbum?.tracks.removeAll { $0.id == track.id }
         oldArtist?.tracks.removeAll { $0.id == track.id }
         track.album = album

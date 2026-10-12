@@ -32,66 +32,66 @@ func lumaTitleBefore(_ a: String, _ b: String) -> Bool {
     return a.localizedStandardCompare(b) == .orderedAscending
 }
 
+/// The library root. It owns the chrome (header, iOS filter bar, navigation destinations) and
+/// decides which page shows; the pages themselves are data-driven views (`LibraryAlbumsContent`,
+/// `LibraryArtistsContent`, `LibrarySongsContent`) so the two platforms can feed them differently:
+///
+/// • iOS keeps every query HERE at the root. The tab stays mounted for the app's lifetime, so the
+///   fetches are paid once and switching the filter pill is instant.
+/// • macOS tears this view down on every sidebar section switch (`MacRootView.detail`), so
+///   root-level queries were re-run each time — ~80–90 ms of main-thread fetching (2k-track
+///   library) to show, say, the Alben grid, which needs none of the tracks. There each page is
+///   wrapped in a small host that owns ONLY the queries that page needs (`MacLibrary…Page`).
 struct LibraryView: View {
     @Environment(AppContainer.self) private var app
+    #if os(macOS)
+    @Environment(\.openNowPlaying) private var openNowPlaying
+    /// macOS drives the library filter from the sidebar (MacRootView), not the in-view filter bar.
+    @Environment(MacNavigationState.self) private var macNav
+    #endif
     var resetSignal: Int = 0
 
     /// Bounded so the "recently added" section never re-fetches the whole tracks table
     /// (it only needs enough rows to find 12 distinct albums).
-    private static let recentTracksDescriptor: FetchDescriptor<Track> = {
+    fileprivate static let recentTracksDescriptor: FetchDescriptor<Track> = {
         var d = FetchDescriptor<Track>(sortBy: [SortDescriptor(\.addedDate, order: .reverse)])
         d.fetchLimit = 200
         d.relationshipKeyPathsForPrefetching = [\.album]   // recentlyAddedAlbums reads track.album
         return d
     }()
 
+    #if !os(macOS)
     @Query(sort: \Album.title)                        private var allAlbums: [Album]
-    @Query(artistsRowDescriptor())                    private var allArtists: [Artist]
-    @Query(tracksRowDescriptor(sortByTitle: true)) private var allTracks: [Track]
+    @Query(artistsRowDescriptor(prefetchTracks: true)) private var allArtists: [Artist]
+    @Query(tracksRowDescriptor(sortByTitle: true))    private var allTracks: [Track]
     @Query(LibraryView.recentTracksDescriptor)        private var recentTracks: [Track]
     @Query(sort: \Playlist.sortIndex)                 private var allPlaylists: [Playlist]
-
-    @State private var filter: LibraryFilter = .albums
-    @State private var albumSort: AlbumSort  = .title
     // Cached, recomputed only when `allTracks` actually changes — the locale-aware sort of the
     // whole table is far too expensive to re-run on every body eval (e.g. each play/pause).
     @State private var sortedSongs: [Track] = []
-    @AppStorage("homeAlbumList")          private var albumAsList = false
-    @AppStorage("homeShowRecentlyAdded")  private var showRecentlyAdded = true
-    @AppStorage("homePinnedPlaylists")    private var pinnedData = Data()
+    #endif
 
-    private var albumLayout: AlbumLayout { albumAsList ? .list : .gallery }
+    @State private var filter: LibraryFilter = .albums
+    @State private var albumSort: AlbumSort  = .title
 
-    private var sortedAlbums: [Album] {
-        switch albumSort {
-        case .title:     return allAlbums.sorted { lumaTitleBefore($0.title, $1.title) }
-        case .artist:    return allAlbums.sorted { lumaTitleBefore($0.artistName, $1.artistName) }
-        case .year:      return allAlbums.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
-        case .dateAdded: return allAlbums.sorted { $0.dateAdded > $1.dateAdded }
-        }
-    }
-
-    private var sortedArtists: [Artist] {
-        allArtists.sorted { lumaTitleBefore($0.name, $1.name) }
-    }
-
-    private var recentlyAddedAlbums: [Album] {
-        var seen = Set<UUID>()
-        var result: [Album] = []
-        for track in recentTracks {
-            guard let album = track.album else { continue }
-            if seen.insert(album.id).inserted {
-                result.append(album)
-                if result.count >= 12 { break }
-            }
-        }
-        return result
+    /// The page to show. macOS reads the sidebar's choice DIRECTLY: mirroring it into `filter` via
+    /// `.onAppear` meant the first frame after a section switch always built the Alben page, then
+    /// threw it away for the real one.
+    private var activeFilter: LibraryFilter {
+        #if os(macOS)
+        macNav.libraryFilter
+        #else
+        filter
+        #endif
     }
 
     var body: some View {
         VStack(spacing: 0) {
             libraryHeader
+            // macOS moves these sub-sections (Alben/Künstler/Songs/Gelikte Songs) into the sidebar.
+            #if os(iOS) || os(visionOS)
             filterBar
+            #endif
             libraryContent
                 // Soft fade where content meets the filter bar — no hard scroll edge.
                 .overlay(alignment: .top) {
@@ -112,23 +112,44 @@ struct LibraryView: View {
         .onChange(of: resetSignal) { _, _ in
             withAnimation(.spring(response: 0.28, dampingFraction: 0.7)) { filter = .albums }
         }
+        #if !os(macOS)
         // Resort the Songs list off-main whenever the library actually changes (add/remove/
         // retag — not playback stats, which keep the same id-order). Runs here at the root so
         // it isn't redone on every visit to the Songs tab.
         .task(id: allTracks) {
-            sortedSongs = await Self.sortSongsAsync(allTracks)
+            sortedSongs = await lumaSortSongsAsync(allTracks)
         }
+        #endif
     }
 
     // MARK: - Custom Header
 
     private var libraryHeader: some View {
         HStack(alignment: .center, spacing: 14) {
+            #if os(macOS)
+            // The sidebar now names the section; mirror the selected sub-section as the title.
+            Text(macNav.sidebarSelection?.title ?? "Mediathek")
+                .font(.system(size: 34, weight: .bold))
+                .tracking(-0.6)
+                .foregroundStyle(.lumaInk())
+            #else
             Text("Mediathek")
                 .font(.system(size: 34, weight: .bold))
                 .tracking(-0.6)
-                .foregroundStyle(.white)
+                .foregroundStyle(.lumaInk())
+            #endif
             Spacer()
+            #if os(macOS)
+            Button { openNowPlaying() } label: {
+                Image(systemName: "list.bullet.rectangle")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.lumaInk(0.7))
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Warteschlange")
+            #endif
         }
         .padding(.horizontal, 20)
         .padding(.top, 20)
@@ -149,17 +170,17 @@ struct LibraryView: View {
                     } label: {
                         Text(f.displayName)
                             .font(.system(size: 13, weight: isActive ? .semibold : .regular))
-                            .foregroundStyle(isActive ? .white : Color.white.opacity(0.4))
+                            .foregroundStyle(isActive ? .lumaInk() : Color.lumaInk(0.4))
                             .padding(.horizontal, 16)
                             .padding(.vertical, 6)
                             .background(
-                                isActive ? Color.white.opacity(0.14) : Color.clear,
+                                isActive ? Color.lumaInk(0.14) : Color.clear,
                                 in: Capsule()
                             )
                             .overlay(
                                 Capsule()
                                     .strokeBorder(
-                                        isActive ? Color.white.opacity(0.18) : Color.clear,
+                                        isActive ? Color.lumaInk(0.18) : Color.clear,
                                         lineWidth: 0.5
                                     )
                             )
@@ -178,25 +199,150 @@ struct LibraryView: View {
 
     @ViewBuilder
     private var libraryContent: some View {
-        switch filter {
-        case .albums:  albumsContent
-        case .artists: artistsContent
-        case .songs:   songsContent
-        case .liked:   likedContent
+        #if os(macOS)
+        switch activeFilter {
+        case .albums:  MacLibraryAlbumsPage(albumSort: $albumSort)
+        case .artists: MacLibraryArtistsPage()
+        case .songs:   MacLibrarySongsPage(cache: app.songOrder)
+        case .liked:   LikedSongsView()
+        }
+        #else
+        switch activeFilter {
+        case .albums:
+            // `allTracks` is already loaded here, so the pinned-playlist covers resolve from it.
+            LibraryAlbumsContent(albums: allAlbums, recentTracks: recentTracks, playlists: allPlaylists,
+                                 playlistTracks: allTracks, albumSort: $albumSort)
+        case .artists:
+            LibraryArtistsContent(artists: allArtists)
+        case .songs:
+            LibrarySongsContent(tracks: allTracks, sortedSongs: sortedSongs)
+        case .liked:
+            LikedSongsView()
+        }
+        #endif
+    }
+}
+
+// MARK: - macOS page hosts (each owns only its own queries)
+
+#if os(macOS)
+private struct MacLibraryAlbumsPage: View {
+    @Query(sort: \Album.title)                 private var albums: [Album]
+    @Query(LibraryView.recentTracksDescriptor) private var recentTracks: [Track]
+    @Query(sort: \Playlist.sortIndex)          private var playlists: [Playlist]
+    /// Only the tracks that sit in a playlist — enough to resolve the pinned playlists' covers.
+    @Query(playlistTracksDescriptor())         private var playlistTracks: [Track]
+    @Binding var albumSort: AlbumSort
+
+    var body: some View {
+        LibraryAlbumsContent(albums: albums, recentTracks: recentTracks, playlists: playlists,
+                             playlistTracks: playlistTracks, albumSort: $albumSort)
+    }
+}
+
+private struct MacLibraryArtistsPage: View {
+    @Query(artistsRowDescriptor()) private var artists: [Artist]
+
+    var body: some View {
+        LibraryArtistsContent(artists: artists)
+    }
+}
+
+private struct MacLibrarySongsPage: View {
+    // No SQL sort: the list order comes from `lumaSortSongsAsync` below, so sorting by title in
+    // the store first was pure overhead. `album` is prefetched for the rows' artwork key.
+    @Query(tracksRowDescriptor(prefetchEntries: false)) private var tracks: [Track]
+    @State private var sortedSongs: [Track]
+    private let cache: SongOrderCache
+
+    /// Seeds the order from the last visit, so re-entering Songs after a section switch shows the
+    /// list on the first frame instead of a spinner. The `.task` below still re-sorts every time
+    /// (cheap, off-main) and corrects the order if the library changed meanwhile.
+    init(cache: SongOrderCache) {
+        self.cache = cache
+        _sortedSongs = State(initialValue: cache.songs)
+    }
+
+    var body: some View {
+        LibrarySongsContent(tracks: tracks, sortedSongs: sortedSongs)
+            .task(id: tracks) {
+                let sorted = await lumaSortSongsAsync(tracks)
+                guard !Task.isCancelled else { return }
+                if sorted != sortedSongs { sortedSongs = sorted }
+                cache.songs = sorted
+            }
+    }
+}
+#endif
+
+/// Remembers the Songs page's sorted order across macOS section switches (the page — and its
+/// @State — is destroyed each time). Holds model references only for their identity: the page
+/// always filters them against the live query (`LibrarySongsContent.displaySongs`) before
+/// rendering, so an entry deleted meanwhile is never shown.
+final class SongOrderCache {
+    var songs: [Track] = []
+}
+
+// MARK: - Albums page
+
+struct LibraryAlbumsContent: View {
+    @Environment(AppContainer.self) private var app
+    let albums: [Album]
+    let recentTracks: [Track]
+    let playlists: [Playlist]
+    /// Source for resolving the pinned playlists' tracks — any set that contains every track
+    /// sitting in a playlist (the whole table on iOS, just the playlist tracks on macOS).
+    let playlistTracks: [Track]
+    @Binding var albumSort: AlbumSort
+
+    @AppStorage("homeAlbumList")          private var albumAsList = false
+    @AppStorage("homeShowRecentlyAdded")  private var showRecentlyAdded = true
+    @AppStorage("homePinnedPlaylists")    private var pinnedData = Data()
+
+    private var albumLayout: AlbumLayout { albumAsList ? .list : .gallery }
+
+    private var sortedAlbums: [Album] {
+        switch albumSort {
+        case .title:     return albums.sorted { lumaTitleBefore($0.title, $1.title) }
+        case .artist:    return albums.sorted { lumaTitleBefore($0.artistName, $1.artistName) }
+        case .year:      return albums.sorted { ($0.year ?? 0) > ($1.year ?? 0) }
+        case .dateAdded: return albums.sorted { $0.dateAdded > $1.dateAdded }
         }
     }
 
-    // MARK: Albums
+    private var recentlyAddedAlbums: [Album] {
+        var seen = Set<UUID>()
+        var result: [Album] = []
+        for track in recentTracks {
+            guard let album = track.album else { continue }
+            if seen.insert(album.id).inserted {
+                result.append(album)
+                if result.count >= 12 { break }
+            }
+        }
+        return result
+    }
 
-    private var albumsContent: some View {
+    /// Playlists the user pinned to the home screen (Settings → Startseite), in pin order.
+    private var pinnedPlaylists: [Playlist] {
+        guard let ids = try? JSONDecoder().decode([UUID].self, from: pinnedData), !ids.isEmpty else { return [] }
+        let byId = Dictionary(playlists.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return ids.compactMap { byId[$0] }
+    }
+
+    var body: some View {
+        // Derived once per pass (each was previously computed twice: for the `isEmpty` test and
+        // again inside its section).
+        let pinned = pinnedPlaylists
+        let recent = showRecentlyAdded ? recentlyAddedAlbums : []
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if !pinnedPlaylists.isEmpty {
-                    pinnedSection
+                if !pinned.isEmpty {
+                    pinnedSection(pinned)
                         .padding(.top, 28)
                 }
-                if showRecentlyAdded && !recentlyAddedAlbums.isEmpty {
-                    recentlyAddedSection
+                if !recent.isEmpty {
+                    recentlyAddedSection(recent)
                         .padding(.top, 28)
                 }
                 allAlbumsSection
@@ -207,26 +353,19 @@ struct LibraryView: View {
         .lumaScrollClearance(playerActive: app.player.isActive)
     }
 
-    /// Playlists the user pinned to the home screen (Settings → Startseite), in pin order.
-    private var pinnedPlaylists: [Playlist] {
-        guard let ids = try? JSONDecoder().decode([UUID].self, from: pinnedData), !ids.isEmpty else { return [] }
-        let byId = Dictionary(allPlaylists.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return ids.compactMap { byId[$0] }
-    }
-
-    private var pinnedSection: some View {
-        let map = validEntryTrackMap(allTracks)
+    private func pinnedSection(_ pinned: [Playlist]) -> some View {
+        let map = validEntryTrackMap(playlistTracks)
         return VStack(alignment: .leading, spacing: 0) {
             Text("Playlists")
                 .font(.system(size: 20, weight: .bold))
                 .tracking(-0.35)
-                .foregroundStyle(.white)
+                .foregroundStyle(.lumaInk())
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
-                    ForEach(pinnedPlaylists) { playlist in
+                    ForEach(pinned) { playlist in
                         NavigationLink(value: playlist) {
                             VStack(alignment: .leading, spacing: 0) {
                                 PlaylistArtworkView(playlist: playlist, tracks: playlist.safeSortedTracks(using: map), cornerRadius: 14)
@@ -234,7 +373,7 @@ struct LibraryView: View {
                                     .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
                                 Text(playlist.name)
                                     .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.88))
+                                    .foregroundStyle(.lumaInk(0.88))
                                     .lineLimit(1)
                                     .padding(.top, 7)
                                     .frame(width: 116, alignment: .leading)
@@ -250,23 +389,24 @@ struct LibraryView: View {
         }
     }
 
-    private var recentlyAddedSection: some View {
+    private func recentlyAddedSection(_ recent: [Album]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("Zuletzt hinzugefügt")
                 .font(.system(size: 20, weight: .bold))
                 .tracking(-0.35)
-                .foregroundStyle(.white)
+                .foregroundStyle(.lumaInk())
                 .padding(.horizontal, 20)
                 .padding(.bottom, 12)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 14) {
-                    ForEach(recentlyAddedAlbums) { album in
+                    ForEach(recent) { album in
                         NavigationLink(value: album) {
                             LibraryAlbumCard(album: album, cardWidth: 116)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .albumContextMenu(album)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -278,10 +418,10 @@ struct LibraryView: View {
     private var allAlbumsSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Text("Alle Alben (\(allAlbums.count))")
+                Text("Alle Alben (\(albums.count))")
                     .font(.system(size: 20, weight: .bold))
                     .tracking(-0.35)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.lumaInk())
                 Spacer()
 
                 Menu {
@@ -306,8 +446,8 @@ struct LibraryView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 14)
 
-            if allAlbums.isEmpty {
-                emptyHint(
+            if albums.isEmpty {
+                LibraryEmptyHint(
                     icon: "music.note.list",
                     text: "Keine Musik vorhanden",
                     sub: "Tippe auf + um Musik zu importieren."
@@ -327,6 +467,7 @@ struct LibraryView: View {
                     LibraryAlbumCard(album: album, cardWidth: nil)
                 }
                 .buttonStyle(.plain)
+                .albumContextMenu(album)
             }
         }
         .padding(.horizontal, 16)
@@ -339,6 +480,7 @@ struct LibraryView: View {
                     AlbumListRow(album: album)
                 }
                 .buttonStyle(LumaRowStyle())
+                .albumContextMenu(album)
                 LumaSeparator(leadingPad: 88)
             }
         }
@@ -347,18 +489,27 @@ struct LibraryView: View {
     private func smallIconButton(_ name: String) -> some View {
         Image(systemName: name)
             .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.75))
+            .foregroundStyle(.lumaInk(0.75))
             .frame(width: 32, height: 32)
-            .background(Color.white.opacity(0.08), in: Circle())
+            .background(Color.lumaInk(0.08), in: Circle())
+    }
+}
+
+// MARK: - Artists page
+
+struct LibraryArtistsContent: View {
+    @Environment(AppContainer.self) private var app
+    let artists: [Artist]
+
+    private var sortedArtists: [Artist] {
+        artists.sorted { lumaTitleBefore($0.name, $1.name) }
     }
 
-    // MARK: Artists
-
-    private var artistsContent: some View {
+    var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                if allArtists.isEmpty {
-                    emptyHint(icon: "music.microphone", text: "Keine Künstler", sub: "Importiere Musik um Künstler zu sehen.")
+                if artists.isEmpty {
+                    LibraryEmptyHint(icon: "music.microphone", text: "Keine Künstler", sub: "Importiere Musik um Künstler zu sehen.")
                         .padding(.top, 60)
                 }
                 ForEach(sortedArtists) { artist in
@@ -373,14 +524,32 @@ struct LibraryView: View {
         }
         .lumaScrollClearance(playerActive: app.player.isActive, top: 20)
     }
+}
 
-    // MARK: Songs
+// MARK: - Songs page
 
-    private var songsContent: some View {
+struct LibrarySongsContent: View {
+    @Environment(AppContainer.self) private var app
+    /// The live query result — the source of truth for which tracks exist.
+    let tracks: [Track]
+    /// The same tracks in list order (sorted off-main by the owner; may lag `tracks` briefly).
+    let sortedSongs: [Track]
+
+    /// `sortedSongs` is an asynchronously refreshed cache; right after a delete (or retag) it still
+    /// holds the just-removed Track until the owner re-sorts. Filtering against the live query each
+    /// body pass keeps a deleted row from being rendered — rendering it would fault its backing
+    /// data ("backing data could no longer be found") and crash. Reading `persistentModelID` is
+    /// safe even on a deleted model.
+    private var displaySongs: [Track] {
+        let liveIDs = Set(tracks.map(\.persistentModelID))
+        return sortedSongs.filter { liveIDs.contains($0.persistentModelID) }
+    }
+
+    var body: some View {
         Group {
-            if allTracks.isEmpty {
+            if tracks.isEmpty {
                 ScrollView {
-                    emptyHint(icon: "music.note", text: "Keine Songs", sub: "Importiere Musik um Songs zu sehen.")
+                    LibraryEmptyHint(icon: "music.note", text: "Keine Songs", sub: "Importiere Musik um Songs zu sehen.")
                         .padding(.top, 60)
                 }
             } else if sortedSongs.isEmpty {
@@ -388,17 +557,19 @@ struct LibraryView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
+                let songs = displaySongs
                 List {
-                    PlayShuffleHeader(tracks: sortedSongs)
+                    PlayShuffleHeader(tracks: songs)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 14, trailing: 16))
-                    ForEach(sortedSongs) { track in
+                    ForEach(songs) { track in
                         TrackRow(track: track, showArtwork: true, showsMenu: true,
                                  isCurrent: track.id == app.player.currentTrack?.id,
-                                 isPlaying: app.player.state.isPlaying, liked: track.isLiked) { playSong(track) }
+                                 isPlaying: track.id == app.player.currentTrack?.id && app.player.state.isPlaying, liked: track.isLiked,
+                                 onTap: { playSong(track) })
                             .equatable()
-                            .frame(minHeight: 56)
+                            .lumaSongRowMinHeight(48)
                             .listRowBackground(Color.clear)
                             .trackRowSeparator()
                             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
@@ -410,82 +581,79 @@ struct LibraryView: View {
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                // No row selection on macOS: otherwise double-click-to-play left a full-width
+                // system selection highlight that bled under the translucent sidebar.
+                .selectionDisabled()
                 .lumaScrollClearance(playerActive: app.player.isActive, top: 20)
             }
         }
     }
 
-    /// Lightweight, Sendable snapshot of the columns the Songs sort needs, so the expensive
-    /// locale-aware comparison can run OFF the main thread (Track is non-Sendable).
-    private struct SongSortKey: Sendable {
-        let id: PersistentIdentifier
-        let album: String, artist: String, title: String
-        let disc: Int, track: Int
-        // nonisolated so the comparator can run inside Task.detached (off the main actor).
-        nonisolated static func before(_ a: SongSortKey, _ b: SongSortKey) -> Bool {
-            if a.album != b.album { return a.album.localizedStandardCompare(b.album) == .orderedAscending }
-            if a.artist != b.artist { return a.artist.localizedStandardCompare(b.artist) == .orderedAscending }
-            if a.disc != b.disc { return a.disc < b.disc }
-            if a.track != b.track { return a.track < b.track }
-            return a.title.localizedStandardCompare(b.title) == .orderedAscending
-        }
-    }
-
-    /// Flat list: album tracks stay contiguous and in track-number order. The locale-aware
-    /// sort of the whole table (~thousands of `localizedStandardCompare`) is far too slow for
-    /// the main thread (it froze the tab for ~2s), so snapshot Sendable keys on main, sort
-    /// off-main, then map back to tracks on main.
-    @MainActor
-    private static func sortSongsAsync(_ tracks: [Track]) async -> [Track] {
-        guard !tracks.isEmpty else { return [] }
-        let keys = tracks.map {
-            SongSortKey(id: $0.persistentModelID, album: $0.albumTitle, artist: $0.artistName,
-                        title: $0.title, disc: $0.discNumber, track: $0.trackNumber)
-        }
-        let orderedIDs = await Task.detached(priority: .userInitiated) {
-            keys.sorted(by: SongSortKey.before).map(\.id)
-        }.value
-        let byID = Dictionary(tracks.map { ($0.persistentModelID, $0) }, uniquingKeysWith: { a, _ in a })
-        return orderedIDs.compactMap { byID[$0] }
-    }
-
     private func playSong(_ track: Track) {
-        let list = sortedSongs
+        let list = displaySongs
         guard let idx = list.firstIndex(where: { $0.id == track.id }) else { return }
         app.queue.setQueue(list, startAt: idx)
         Task { await app.player.play(track: track) }
     }
+}
 
-    // MARK: Liked
-
-    private var likedContent: some View {
-        LikedSongsView()
+/// Lightweight, Sendable snapshot of the columns the Songs sort needs, so the expensive
+/// locale-aware comparison can run OFF the main thread (Track is non-Sendable).
+private struct SongSortKey: Sendable {
+    let id: PersistentIdentifier
+    let album: String, artist: String, title: String
+    let disc: Int, track: Int
+    // nonisolated so the comparator can run inside Task.detached (off the main actor).
+    nonisolated static func before(_ a: SongSortKey, _ b: SongSortKey) -> Bool {
+        if a.album != b.album { return a.album.localizedStandardCompare(b.album) == .orderedAscending }
+        if a.artist != b.artist { return a.artist.localizedStandardCompare(b.artist) == .orderedAscending }
+        if a.disc != b.disc { return a.disc < b.disc }
+        if a.track != b.track { return a.track < b.track }
+        return a.title.localizedStandardCompare(b.title) == .orderedAscending
     }
+}
 
-    // MARK: - Helpers
+/// Flat list: album tracks stay contiguous and in track-number order. The locale-aware
+/// sort of the whole table (~thousands of `localizedStandardCompare`) is far too slow for
+/// the main thread (it froze the tab for ~2s), so snapshot Sendable keys on main, sort
+/// off-main, then map back to tracks on main.
+@MainActor
+func lumaSortSongsAsync(_ tracks: [Track]) async -> [Track] {
+    guard !tracks.isEmpty else { return [] }
+    let keys = tracks.map {
+        SongSortKey(id: $0.persistentModelID, album: $0.albumTitle, artist: $0.artistName,
+                    title: $0.title, disc: $0.discNumber, track: $0.trackNumber)
+    }
+    let orderedIDs = await Task.detached(priority: .userInitiated) {
+        keys.sorted(by: SongSortKey.before).map(\.id)
+    }.value
+    let byID = Dictionary(tracks.map { ($0.persistentModelID, $0) }, uniquingKeysWith: { a, _ in a })
+    return orderedIDs.compactMap { byID[$0] }
+}
 
-    private func emptyHint(icon: String, text: LocalizedStringKey, sub: LocalizedStringKey) -> some View {
+// MARK: - Helpers
+
+private struct LibraryEmptyHint: View {
+    let icon: String
+    let text: LocalizedStringKey
+    let sub: LocalizedStringKey
+
+    var body: some View {
         VStack(spacing: 14) {
             Image(systemName: icon)
                 .font(.system(size: 44))
-                .foregroundStyle(.white.opacity(0.2))
+                .foregroundStyle(.lumaInk(0.2))
             Text(text)
                 .font(.headline)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.lumaInk(0.4))
             Text(sub)
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.25))
+                .foregroundStyle(.lumaInk(0.25))
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
         .padding(.horizontal, 20)
-    }
-
-    private func play(track: Track) {
-        guard let idx = allTracks.firstIndex(where: { $0.id == track.id }) else { return }
-        app.queue.setQueue(allTracks, startAt: idx)
-        Task { await app.player.play(track: track) }
     }
 }
 
@@ -504,32 +672,45 @@ struct PlayShuffleHeader: View {
             #endif
         }
         #if os(macOS)
-        .padding(.top, 8)
+        // Cover-less lists (Songs / Liked / smart playlists) sit these buttons right under a plain
+        // title instead of an album cover, so the bare row inset left them looking cramped. Give
+        // real vertical breathing room above and below, and nudge the leading edge so the play
+        // pill lines up with the 20pt title above it (these header rows sit at a 16pt list inset).
+        .padding(.top, 14)
+        .padding(.bottom, 6)
+        .padding(.leading, 4)
         #endif
     }
 
     private func button(_ label: LocalizedStringKey, icon: String, primary: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
+        #if os(macOS)
+        let corner: CGFloat = 9
+        #else
+        let corner: CGFloat = 14
+        #endif
+        return Button(action: action) {
             Label(label, systemImage: icon)
+                #if os(macOS)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 20)
+                .frame(height: 32)
+                #else
                 .font(.system(size: 16, weight: .semibold))
                 .tracking(-0.25)
-                #if os(macOS)
-                .frame(width: 150, height: 40)
-                #else
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
                 #endif
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(primary ? Color.lumaAccent : Color.white.opacity(0.1))
+                    RoundedRectangle(cornerRadius: corner, style: .continuous)
+                        .fill(primary ? Color.lumaAccent : Color.lumaInk(0.1))
                 )
                 .overlay {
                     if !primary {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(.white.opacity(0.14), lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: corner, style: .continuous)
+                            .strokeBorder(.lumaInk(0.14), lineWidth: 0.5)
                     }
                 }
-                .foregroundStyle(primary ? .black : .white)
+                .foregroundStyle(primary ? .lumaOnAccent : .lumaInk())
         }
         .buttonStyle(.plain)
     }
@@ -551,15 +732,15 @@ struct ArtistListRow: View {
         HStack(spacing: 14) {
             ArtworkView(data: artist.sortedAlbums.first?.artworkData, cacheKey: artist.sortedAlbums.first?.id.uuidString, cornerRadius: 26, size: 52)
             VStack(alignment: .leading, spacing: 4) {
-                Text(artist.name).font(.body.weight(.semibold)).foregroundStyle(.white)
+                Text(artist.name).font(.body.weight(.semibold)).foregroundStyle(.lumaInk())
                 let a = artist.albumCount, t = artist.trackCount
                 Text(verbatim: "\(CountText.albums(a)) · \(CountText.songs(t))")
-                    .font(.caption).foregroundStyle(.white.opacity(0.45))
+                    .font(.caption).foregroundStyle(.lumaInk(0.45))
             }
             Spacer()
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.25))
+                .foregroundStyle(.lumaInk(0.25))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 10)
@@ -578,17 +759,17 @@ struct AlbumListRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(album.title)
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.lumaInk())
                     .lineLimit(1)
                 Text(album.artistName + (album.year.map { " · \($0)" } ?? ""))
                     .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(.lumaInk(0.45))
                     .lineLimit(1)
             }
             Spacer()
             Image(systemName: "chevron.right")
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.25))
+                .foregroundStyle(.lumaInk(0.25))
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 9)
@@ -611,17 +792,25 @@ struct LibraryAlbumCard: View {
                 // ~512px so the gallery doesn't inflate full ~1024px covers for ~150 cards.
                 ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 14, size: nil, maxPixel: 512)
                     .aspectRatio(1, contentMode: .fit)
-                    .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
+                    // Cast the drop shadow from a constant rounded-rect shape behind the (opaque)
+                    // cover, NOT from the image's own alpha. Same look, but the rasterizer gets a
+                    // stable shadow path instead of re-deriving it from cover pixels every redraw —
+                    // it adds up across the ~150 cards the macOS adaptive gallery shows at once.
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.black)
+                            .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
+                    )
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text(album.title)
                     .font(.system(size: cardWidth != nil ? 12 : 13, weight: .medium))
                     .tracking(cardWidth != nil ? 0 : -0.2)
-                    .foregroundStyle(cardWidth != nil ? Color.white.opacity(0.88) : .white)
+                    .foregroundStyle(cardWidth != nil ? Color.lumaInk(0.88) : .lumaInk())
                     .lineLimit(1)
                 Text(album.artistName)
                     .font(.system(size: cardWidth != nil ? 11 : 12))
-                    .foregroundStyle(.white.opacity(cardWidth != nil ? 0.4 : 0.42))
+                    .foregroundStyle(.lumaInk(cardWidth != nil ? 0.4 : 0.42))
                     .lineLimit(1)
             }
             .padding(.top, cardWidth != nil ? 7 : 8)
@@ -649,19 +838,9 @@ struct LikedSongsView: View {
     var body: some View {
         if liked.isEmpty {
             ScrollView {
-                VStack(spacing: 14) {
-                    Image(systemName: "heart")
-                        .font(.system(size: 44))
-                        .foregroundStyle(.white.opacity(0.2))
-                    Text("Keine Liked Songs")
-                        .font(.headline)
-                        .foregroundStyle(.white.opacity(0.4))
-                    Text("Songs die du magst erscheinen hier.")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.25))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 60)
+                LumaEmptyState(icon: "heart", title: "Keine Liked Songs",
+                               subtitle: "Songs die du magst erscheinen hier.")
+                    .padding(.vertical, 60)
             }
         } else {
             List {
@@ -672,13 +851,14 @@ struct LikedSongsView: View {
                 ForEach(liked) { track in
                     TrackRow(track: track, showArtwork: true, showsMenu: true,
                              isCurrent: track.id == app.player.currentTrack?.id,
-                             isPlaying: app.player.state.isPlaying, liked: track.isLiked) {
+                             isPlaying: track.id == app.player.currentTrack?.id && app.player.state.isPlaying, liked: track.isLiked,
+                             onTap: {
                         guard let idx = liked.firstIndex(where: { $0.id == track.id }) else { return }
                         app.queue.setQueue(liked, startAt: idx)
                         Task { await app.player.play(track: track) }
-                    }
+                    })
                     .equatable()
-                    .frame(minHeight: 56)
+                    .lumaSongRowMinHeight(56)
                     .listRowBackground(Color.clear)
                     .trackRowSeparator()
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
@@ -690,6 +870,7 @@ struct LikedSongsView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .selectionDisabled()   // no full-width selection highlight on double-click-to-play (macOS)
             .lumaScrollClearance(playerActive: app.player.isActive, top: 20)
         }
     }

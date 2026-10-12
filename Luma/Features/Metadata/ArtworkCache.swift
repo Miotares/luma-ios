@@ -1,72 +1,19 @@
 import Foundation
-#if os(iOS) || os(visionOS)
-import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
-// Actor provides thread-safe access from both MainActor (UI) and detached tasks (import pipeline).
-actor ArtworkCache {
-    private let memCache = NSCache<NSString, AnyObject>()
-    private let diskURL: URL
+/// Legacy cleanup. Earlier versions wrote a full-resolution copy of every album cover to
+/// `Application Support/LumaArtwork/<albumID>.jpg` alongside the ~1024px thumbnail kept inline on
+/// the Album row. Nothing ever read those files — every surface (rows, gallery, and even the
+/// full-screen player, which `ArtworkView` caps at ~1024px) renders the inline thumbnail — so they
+/// were a write-only disk leak that grew unbounded on the (iCloud-backed) Application Support
+/// directory. The import sites no longer write them; this purges any left behind, exactly once.
+nonisolated enum LegacyArtworkCleanup {
+    private static let didPurgeKey = "didPurgeLegacyArtworkCache_v1"
 
-    static let shared = ArtworkCache()
-
-    private init() {
+    static func purgeIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: didPurgeKey) else { return }
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        diskURL = support.appendingPathComponent("LumaArtwork", isDirectory: true)
-        try? FileManager.default.createDirectory(at: diskURL, withIntermediateDirectories: true)
-        memCache.countLimit = 200
-        memCache.totalCostLimit = 100 * 1024 * 1024 // 100 MB
+        let dir = support.appendingPathComponent("LumaArtwork", isDirectory: true)
+        try? FileManager.default.removeItem(at: dir)
+        UserDefaults.standard.set(true, forKey: didPurgeKey)
     }
-
-    func store(_ data: Data, for id: UUID) {
-        let key = id.uuidString as NSString
-        let fileURL = diskURL.appendingPathComponent(id.uuidString + ".jpg")
-        try? data.write(to: fileURL, options: .atomic)
-        #if os(iOS) || os(visionOS)
-        if let img = UIImage(data: data) {
-            memCache.setObject(img, forKey: key, cost: data.count)
-        }
-        #elseif os(macOS)
-        if let img = NSImage(data: data) {
-            memCache.setObject(img, forKey: key, cost: data.count)
-        }
-        #endif
-    }
-
-    func data(for id: UUID) -> Data? {
-        let fileURL = diskURL.appendingPathComponent(id.uuidString + ".jpg")
-        return try? Data(contentsOf: fileURL)
-    }
-
-    func hasArtwork(for id: UUID) -> Bool {
-        let fileURL = diskURL.appendingPathComponent(id.uuidString + ".jpg")
-        return FileManager.default.fileExists(atPath: fileURL.path)
-    }
-
-    func deleteArtwork(for id: UUID) {
-        let key = id.uuidString as NSString
-        memCache.removeObject(forKey: key)
-        let fileURL = diskURL.appendingPathComponent(id.uuidString + ".jpg")
-        try? FileManager.default.removeItem(at: fileURL)
-    }
-
-    #if os(iOS) || os(visionOS)
-    func image(for id: UUID) -> UIImage? {
-        let key = id.uuidString as NSString
-        if let cached = memCache.object(forKey: key) as? UIImage { return cached }
-        guard let data = data(for: id), let img = UIImage(data: data) else { return nil }
-        memCache.setObject(img, forKey: key, cost: data.count)
-        return img
-    }
-    #elseif os(macOS)
-    func image(for id: UUID) -> NSImage? {
-        let key = id.uuidString as NSString
-        if let cached = memCache.object(forKey: key) as? NSImage { return cached }
-        guard let data = data(for: id), let img = NSImage(data: data) else { return nil }
-        memCache.setObject(img, forKey: key, cost: data.count)
-        return img
-    }
-    #endif
 }

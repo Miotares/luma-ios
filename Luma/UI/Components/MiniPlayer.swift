@@ -21,7 +21,7 @@ struct MiniPlayer: View {
                 // controls are OUTSIDE this tap region, so they no longer compete
                 // with the open-gesture (which made them feel laggy/mushy).
                 HStack(spacing: 12) {
-                    ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 8, size: 44)
+                    ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString ?? track.id.uuidString, cornerRadius: 8, size: 44)
                         .shadow(color: .black.opacity(0.3), radius: 5, y: 2)
 
                     VStack(alignment: .leading, spacing: 2) {
@@ -40,18 +40,23 @@ struct MiniPlayer: View {
                 .onTapGesture { onTap?() }
 
                 HStack(spacing: 2) {
-                    controlButton("backward.fill", size: 18) {
+                    controlButton("backward.fill", size: 18, label: "Vorheriger Titel") {
                         Task { await app.queue.playPrevious() }
                     }
                     controlButton(
                         app.player.state.isPlaying ? "pause.fill" : "play.fill",
-                        size: 26, weight: .medium
+                        size: 26, weight: .medium,
+                        label: app.player.state.isPlaying ? "Pause" : "Wiedergabe"
                     ) {
                         app.player.togglePlayPause()
                     }
-                    controlButton("forward.fill", size: 18) {
+                    controlButton("forward.fill", size: 18, label: "Nächster Titel") {
                         Task { await app.queue.advance() }
                     }
+                    // At the end of the queue (repeat off) forward would stop playback and dismiss the
+                    // mini-player; disable it there instead.
+                    .disabled(!app.queue.hasNext)
+                    .opacity(app.queue.hasNext ? 1 : 0.35)
                 }
             }
             .padding(.leading, 18)
@@ -65,7 +70,7 @@ struct MiniPlayer: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func controlButton(_ icon: String, size: CGFloat, weight: Font.Weight = .regular, action: @escaping () -> Void) -> some View {
+    private func controlButton(_ icon: String, size: CGFloat, weight: Font.Weight = .regular, label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: size, weight: weight))
@@ -76,6 +81,7 @@ struct MiniPlayer: View {
                 .animation(nil, value: icon)     // flip state instantly, never animate
         }
         .buttonStyle(PressableButtonStyle())
+        .accessibilityLabel(label)
     }
 }
 

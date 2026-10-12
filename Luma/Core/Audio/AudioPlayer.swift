@@ -3,6 +3,9 @@ import AVFoundation
 import Foundation
 import MediaPlayer
 import Observation
+#if canImport(AppKit)
+import AppKit
+#endif
 
 /// Playback engine, rebuilt on AVAudioEngine (was AVPlayer) to enable TRUE gapless playback
 /// and an equalizer. The PUBLIC contract is unchanged — same @Observable state, methods,
@@ -50,7 +53,7 @@ final class AudioPlayer {
     }
 
     enum PlaybackState: Equatable {
-        case stopped, playing, paused, buffering
+        case stopped, playing, paused
         var isActive: Bool { self != .stopped }
         var isPlaying: Bool { self == .playing }
     }
@@ -110,11 +113,15 @@ final class AudioPlayer {
     private var trackStartedAt: Date?
     private var scheduleGeneration = 0                // stale-completion guard
     private var displayTimer: Timer?
-    /// Whether the app is in the foreground. While backgrounded, the display tick still runs
+    /// Whether a Luma surface is actually on-screen. While off-screen the display tick still runs
     /// (it drives gapless preload / crossfade timing + listen accumulation) but does NOT publish
     /// the observable `currentTime` — there is no visible scrubber, so the per-tick SwiftUI
     /// invalidation is pure wasted main-thread work that contributes to background stutter.
-    private var isForeground = true
+    /// Driven by scenePhase on iOS and by window occlusion on macOS (see setupSystemNotifications);
+    /// exposed read-only so the now-playing waveform can stop animating off-screen.
+    private(set) var isForeground = true
+    /// macOS occlusion-state observer token (removed in deinit). nil on iOS.
+    private var occlusionObserver: NSObjectProtocol?
 
     // Gapless preload of the next track (scheduled back-to-back on the active node).
     private var preloadStarted = false
@@ -126,6 +133,9 @@ final class AudioPlayer {
     private var lastListenPos: TimeInterval = 0
     private var pendingListen: TimeInterval = 0
     private var lastPersistPos: TimeInterval = 0
+    // Throttles the ~1Hz now-playing (lock screen / Control Center) elapsed resync — see
+    // maybeSyncNowPlaying. Rebased to the start position at every authoritative (re)start.
+    private var lastNowPlayingSyncPos: TimeInterval = 0
     // Play-count gating: count a "play" once per track session, after enough real listening.
     private var sessionListened: TimeInterval = 0
     private var playRecorded = false
@@ -142,7 +152,15 @@ final class AudioPlayer {
 
     // Crossfade: the outgoing node overlaps the incoming one while volumes ramp.
     static let crossfadeDefaultsKey = "crossfadeDuration"
-    private var fadeTimer: Timer?
+    /// The crossfade volume ramp is driven OFF the main run loop. It used to be a `Timer` on
+    /// `RunLoop.main` (.common) — but that ramp is the ONLY per-tick *audio* operation, and when the
+    /// user opened/reordered the queue DURING a transition the saturated main thread coalesced its
+    /// 40 ms ticks into one catch-up firing, so the gain jumped in coarse steps on BOTH overlapping
+    /// nodes at once = audible zipper/crackle ("Rauschen/Kratzen"). A dispatch-source timer on a
+    /// dedicated queue is immune to main-thread stalls; the handler writes only the (thread-safe)
+    /// node volumes off-main and hops to the main actor exactly once, at the end, to finish.
+    private var fadeTimerSource: DispatchSourceTimer?
+    private let fadeQueue = DispatchQueue(label: "luma.crossfade.ramp", qos: .userInteractive)
     private var isCrossfading = false
     private var crossfadeOutgoing: AVAudioPlayerNode?
     private var crossfadeDuration: TimeInterval {
@@ -159,9 +177,10 @@ final class AudioPlayer {
 
     deinit {
         displayTimer?.invalidate()
-        fadeTimer?.invalidate()
+        fadeTimerSource?.cancel()
         sleepTimer?.invalidate()
         accessedURL?.stopAccessingSecurityScopedResource()
+        if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
     }
 
     // MARK: - Playback Control
@@ -181,17 +200,35 @@ final class AudioPlayer {
     /// and (when `autostart`) start the engine + node. Otherwise park paused for restore.
     private func startPlayback(track: Track, from offset: TimeInterval, autostart: Bool) async {
         flushListen()
-        guard let url = resolveURL(for: track), isPlayable(url, localCopy: track.hasLocalCopy),
+        guard let url = resolveURL(for: track) else {
+            await handleUnplayable()
+            return
+        }
+        // Begin the security scope BEFORE decoding. A bookmark-resolved URL (legacy iOS imports /
+        // macOS .withSecurityScope) can't be opened by AVAudioFile/AVAssetReader without an active
+        // scope, so decoding first wrongly routed a real, playable file to handleUnplayable() and
+        // skipped it. No-op for local-copy URLs (own container, not security-scoped). Released on
+        // the failure paths below; on success it's adopted as the current resource.
+        let scoped = url.startAccessingSecurityScopedResource()
+        guard isPlayable(url, localCopy: track.hasLocalCopy),
               let decoded = await TrackDecoder.open(url: url) else {
+            if scoped { url.stopAccessingSecurityScopedResource() }
             await handleUnplayable()
             return
         }
         skipFailures = 0
-        if autostart { do { try session.activate() } catch { return } }
+        if autostart {
+            do { try session.activate() }
+            catch {
+                if scoped { url.stopAccessingSecurityScopedResource() }
+                return
+            }
+        }
 
+        // Release the previous track's scope and adopt this one (balanced by the next
+        // startPlayback / stop()). accessedURL only tracks a scope we actually started.
         stopAccessingCurrentResource()
-        _ = url.startAccessingSecurityScopedResource()
-        accessedURL = url
+        accessedURL = scoped ? url : nil
 
         cancelCrossfade()
         resetNodes()
@@ -256,14 +293,28 @@ final class AudioPlayer {
     func pause() -> Bool {
         guard state.isPlaying else { return false }
         cancelCrossfade()
+        // Capture the LIVE render head BEFORE idling the node — once activeNode.pause() runs the
+        // clock reads back the parked value. Do NOT use `currentTime`: it's frozen while
+        // backgrounded (published only `if isForeground`), so pausing from the lock screen would
+        // rewind the playhead to where it was when the screen locked (the "jumps back to 6s" bug).
+        let head = clock.seconds(on: activeNode, parked: parkedTime)
+        let boundedHead = trackDuration > 0 ? min(head, trackDuration) : head
         activeNode.pause()
-        // Idle the WHOLE render pipeline, not just the node, so the engine stops feeding the output.
-        // Leaving the engine running while "paused" kept the app actively rendering silence — which
-        // both wastes power and muddies the paused state that the system (now-playing / headset
-        // routing) and our own resume() cold-restart depend on. resume() restarts it. Symmetric.
+        #if os(iOS) || os(visionOS)
+        // iOS: idle the WHOLE render pipeline, not just the node, so the engine stops feeding the
+        // output. Leaving it running while "paused" wastes power and muddies the paused state that
+        // the system (now-playing / headset routing) and our cold-restart resume() depend on.
+        // resume() restarts it. macOS deliberately SKIPS this: idling the engine there cost a
+        // ~150–225 ms cold restart on the next play/resume (the "playback starts a half-second
+        // late, until the song switches" lag). macOS has no Bluetooth route-sleep to recover from,
+        // so keeping the engine warm (rendering silence is nearly free on the desktop) makes the
+        // next play/resume instant — and, because the route never idles, a bare node.play() resumes
+        // reliably even over AirPods, so resume() takes a fast path on macOS.
         engineGraph.pause()
+        #endif
         state = .paused
-        parkedTime = currentTime
+        parkedTime = boundedHead
+        if isForeground { currentTime = boundedHead }
         trackStartedAt = nil
         stopDisplayTimer()
         flushListen()
@@ -283,6 +334,36 @@ final class AudioPlayer {
     private func performResume(allowRetry: Bool) -> Bool {
         guard state == .paused, currentTrack != nil else { return false }
         do { try session.activate() } catch { return false }
+        #if os(macOS)
+        // macOS keeps the engine RUNNING while paused (see pause()), so resume doesn't need the
+        // cold engine rebuild below — that rebuild is the iOS AirPods route-sleep recovery and it
+        // added a ~150 ms engine-restart lag. Re-SCHEDULE the track from the parked frame and play
+        // it via startAndPlay: the engine is already running, so startAndPlay just calls node.play()
+        // (~10 ms), no restart. We reschedule rather than un-pausing the node because a bare
+        // node.play() resume fired a spurious end-of-data completion that bounced playback straight
+        // back to paused. This mirrors startPlayback's proven autostart path. Falls through to the
+        // full rebuild if the engine isn't actually running (e.g. a config-change stopped it).
+        if engineGraph.isRunning, let decoded = currentDecoded, let track = currentTrack {
+            let resumeAt = parkedTime
+            let node = activeNode
+            node.stop()
+            scheduleGeneration += 1
+            clearPreload()
+            clock.invalidate()
+            engineGraph.connect(player: node, format: decoded.processingFormat)
+            node.volume = volume
+            schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
+            if engineGraph.startAndPlay(node, format: decoded.processingFormat) {
+                anchorPlayhead(at: resumeAt)
+                lastListenPos = resumeAt
+                state = .playing
+                startDisplayTimer()
+                nowPlayingUpdate()
+                return true
+            }
+            // Couldn't play on the warm engine — fall through to the full rebuild path below.
+        }
+        #endif
         // RE-SCHEDULE + COLD-RESTART the engine on resume rather than relying on a bare `node.play()`
         // to wake the paused node. A paused AVAudioPlayerNode/engine will NOT resume audibly after
         // the output route went idle (Bluetooth/AirPods: pause → route sleeps → play does nothing) —
@@ -364,11 +445,13 @@ final class AudioPlayer {
     /// session active too (only pausing the engine to save power), so we stay the system's "Now
     /// Playing" app and remain resumable from the lock screen / Control Center / AirPods.
     func enterBackground() {
-        #if os(iOS) || os(visionOS)
-        // Stop publishing the (invisible) scrubber while backgrounded — set BEFORE the branch so
-        // it also applies while playing (the main case). Not touched on macOS, where an unfocused
-        // window stays visible and must keep its scrubber.
+        // Stop publishing the (invisible) scrubber while off-screen — set BEFORE the branch so it
+        // also applies while playing (the main case). On iOS this is scenePhase .background; on
+        // macOS it's window occlusion (minimize / Cmd-H / fully covered), where the scrubber is
+        // likewise invisible. An occluded macOS window keeps PLAYING — we only freeze the per-tick
+        // SwiftUI publish, so the session/engine-idling branch below stays iOS-only.
         isForeground = false
+        #if os(iOS) || os(visionOS)
         if state == .playing {
             // We only push now-playing on discrete events (play/pause/seek/track-change), never on
             // the display tick — so by the time the screen locks, the last snapshot can be many
@@ -415,8 +498,12 @@ final class AudioPlayer {
             parkedTime = bounded
             currentTime = bounded
         } else {
-            // Paused / no anchor: parkedTime is already the correct frozen position.
+            // Paused / no anchor: parkedTime holds the render-accurate position — and is correct
+            // even when the pause happened while backgrounded, where `currentTime` was frozen at the
+            // lock-time value. Publish parkedTime so the in-app scrubber matches the lock screen
+            // instead of rewinding to the stale frozen value.
             syncPlayheadFromClock()
+            currentTime = parkedTime
         }
         nowPlayingUpdate()
     }
@@ -441,6 +528,9 @@ final class AudioPlayer {
         pendingAnchorSeconds = seconds
         wallClockAnchor = (Date(), max(0, seconds))
         trackStartedAt = Date()
+        // Rebase the now-playing resync throttle to this (re)start position so the first periodic
+        // lock-screen correction fires ~1s into the new segment, not delayed by the old baseline.
+        lastNowPlayingSyncPos = max(0, seconds)
     }
 
     /// Flush any in-memory listened-seconds delta into the current track's stats (no save).
@@ -499,12 +589,17 @@ final class AudioPlayer {
         nowPlayingUpdate()
     }
 
+    // Skip relative to `playheadSeconds` (the render head), NOT the observable `currentTime`,
+    // which is frozen while backgrounded — so a skip arriving from a background remote command
+    // would otherwise seek relative to the stale lock-time position. (Identical in the foreground,
+    // where the two are equal; this just keeps the math correct if these are ever wired to a
+    // lock-screen command — the skip remote commands are disabled today.)
     func skipForward(_ seconds: TimeInterval = 15) {
-        seek(to: min(currentTime + seconds, duration))
+        seek(to: min(playheadSeconds + seconds, duration))
     }
 
     func skipBackward(_ seconds: TimeInterval = 15) {
-        seek(to: max(currentTime - seconds, 0))
+        seek(to: max(playheadSeconds - seconds, 0))
     }
 
     // MARK: - Scheduling
@@ -518,6 +613,20 @@ final class AudioPlayer {
     private func clearPreload() {
         preloadStarted = false
         preloadedNext = nil
+    }
+
+    /// Drop a gapless-preloaded next track whose buffers are ALREADY scheduled back-to-back on the
+    /// active node. The queue calls this when its up-next changed (shuffle toggled / reshuffled /
+    /// manually reordered / play-next), so the node would otherwise play the now-stale OLD next
+    /// track while the queue index moves to the new one. `node.stop()` (inside `seek`) drops every
+    /// scheduled buffer including the preload, so re-seeking to the live head flushes it; the next
+    /// preload re-triggers naturally as the new up-next nears its end. No-op when nothing is
+    /// preloaded, or the preloaded track is STILL the correct next one — so normal playback (and a
+    /// reorder that didn't touch the immediate next) never glitches.
+    func invalidatePreload() {
+        guard preloadStarted || preloadedNext != nil else { return }
+        if let preloaded = preloadedNext, preloaded.track.id == crossfadeNextTrack()?.id { return }
+        seek(to: parkedTime)
     }
 
     /// Schedule `decoded` on `node` from `offset` seconds, firing the track-boundary handler
@@ -658,18 +767,22 @@ final class AudioPlayer {
         parkedTime = bounded
         accumulateListen(at: bounded)
         maybePersistProgress(at: bounded)
+        maybeSyncNowPlaying(at: bounded)
         // Pass the freshly-measured play head — NOT the observable `currentTime`, which is frozen
         // while backgrounded (it's only published `if isForeground`). Reading `currentTime` here
         // meant crossfade + gapless preload never triggered on the lock screen / in the background.
-        maybeStartCrossfade(at: bounded)
-        maybePreloadGapless(at: bounded)
+        // Read the crossfade setting ONCE per tick — it backs both checks below — instead of
+        // hitting UserDefaults twice on every 0.2s tick throughout playback.
+        let crossfade = crossfadeDuration
+        maybeStartCrossfade(at: bounded, crossfade: crossfade)
+        maybePreloadGapless(at: bounded, crossfade: crossfade)
     }
 
     // MARK: - Gapless preload
 
-    private func maybePreloadGapless(at pos: TimeInterval) {
+    private func maybePreloadGapless(at pos: TimeInterval, crossfade: TimeInterval) {
         guard state == .playing, !isCrossfading, !preloadStarted,
-              crossfadeDuration == 0, trackDuration > 0,
+              crossfade == 0, trackDuration > 0,
               pos >= trackDuration - 8,
               sleepMode != .endOfTrack,
               let q = queue, q.repeatMode != .one,
@@ -697,8 +810,8 @@ final class AudioPlayer {
 
     // MARK: - Crossfade
 
-    private func maybeStartCrossfade(at pos: TimeInterval) {
-        let xfade = crossfadeDuration
+    private func maybeStartCrossfade(at pos: TimeInterval, crossfade: TimeInterval) {
+        let xfade = crossfade
         let sleepSuppressesCrossfade = sleepMode == .endOfTrack
             || (sleepMode == .duration && sleepRemaining <= sleepFadeDuration)
         guard xfade > 0, !isCrossfading, state == .playing, trackDuration > 0,
@@ -767,22 +880,41 @@ final class AudioPlayer {
         queue?.advanceIndexForCrossfade()
         nowPlayingUpdate()
 
-        let start = Date()
+        // Ramp the two nodes' gains off the main run loop (see `fadeTimerSource`). The handler runs
+        // on `fadeQueue`, so it can only touch values, never main-actor state: capture the two node
+        // references and the target as locals (AVAudioPlayerNode.volume is a thread-safe render-graph
+        // parameter), drive `p` from a monotonic deadline, and hop to the main actor a single time to
+        // run `finishCrossfade()`. 100 Hz here is cheap (two float writes/tick) and keeps every step
+        // inaudibly small even on a 1 s crossfade.
         let target = volume
-        fadeTimer?.invalidate()
-        let timer = Timer(timeInterval: 0.04, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            let p = min(1, Date().timeIntervalSince(start) / xfade)
-            self.crossfadeOutgoing?.volume = Float(1 - p) * target
-            self.activeNode.volume = Float(p) * target
-            if p >= 1 { self.finishCrossfade() }
+        let startTime = DispatchTime.now()
+        let totalNanos = Double(max(0.001, xfade)) * 1_000_000_000
+        nonisolated(unsafe) let rampOutgoing = outgoing
+        nonisolated(unsafe) let rampIncoming = incoming
+        fadeTimerSource?.cancel()
+        let source = DispatchSource.makeTimerSource(queue: fadeQueue)
+        source.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(2))
+        source.setEventHandler { [weak self] in
+            let elapsed = Double(DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds)
+            let p = min(1, elapsed / totalNanos)
+            rampOutgoing.volume = Float(1 - p) * target
+            rampIncoming.volume = Float(p) * target
+            if p >= 1 {
+                source.cancel()
+                // Stop the outgoing node HERE (off-main; AVAudioPlayerNode.stop() is thread-safe) so
+                // its read-ahead worker stops contending for the render graph immediately, rather than
+                // lingering (silent) until the main-actor finishCrossfade hop — which can be delayed by
+                // exactly the queue work that triggers this bug. finishCrossfade still clears state.
+                rampOutgoing.stop()
+                Task { @MainActor in self?.finishCrossfade() }
+            }
         }
-        RunLoop.main.add(timer, forMode: .common)
-        fadeTimer = timer
+        fadeTimerSource = source
+        source.resume()
     }
 
     private func finishCrossfade() {
-        fadeTimer?.invalidate(); fadeTimer = nil
+        fadeTimerSource?.cancel(); fadeTimerSource = nil
         crossfadeOutgoing?.stop()
         crossfadeOutgoing = nil
         activeNode.volume = volume
@@ -792,7 +924,7 @@ final class AudioPlayer {
     /// Abandon any in-progress crossfade — the incoming node becomes the sole player.
     private func cancelCrossfade() {
         guard isCrossfading else { return }
-        fadeTimer?.invalidate(); fadeTimer = nil
+        fadeTimerSource?.cancel(); fadeTimerSource = nil
         crossfadeOutgoing?.stop(); crossfadeOutgoing = nil
         activeNode.volume = volume
         isCrossfading = false
@@ -840,7 +972,13 @@ final class AudioPlayer {
     @MainActor
     private func pushNowPlaying() {
         guard let track = currentTrack else { nowPlaying.clear(); return }
-        nowPlaying.update(track: track, isPlaying: state.isPlaying, elapsed: currentTime)
+        // Report the render-accurate head (`parkedTime`), NOT the observable `currentTime`.
+        // `currentTime` is frozen while backgrounded (published only `if isForeground`), so a push
+        // that fires in the background — the periodic maybeSyncNowPlaying resync, or a route/
+        // config-change recovery — would otherwise pin the lock screen to a STALE elapsed.
+        // `parkedTime` is updated from the render clock on every display tick (fg AND bg), so it is
+        // always the true head; in the foreground the two are identical.
+        nowPlaying.update(track: track, isPlaying: state.isPlaying, elapsed: parkedTime, duration: trackDuration)
     }
 
     private func handleConfigurationChange() {
@@ -922,6 +1060,33 @@ final class AudioPlayer {
         }
     }
 
+    /// Re-pin the lock-screen / Control-Center elapsed time to the true render head about once a
+    /// second while playing. iOS does NOT read our elapsed continuously — it takes the last value
+    /// we pushed and EXTRAPOLATES it forward on the wall clock at the playback rate. We only push on
+    /// discrete events (play/pause/seek/track-change/bg/fg), so between them the lock screen
+    /// free-runs on wall time while the in-app scrubber tracks the real audio. Output latency at
+    /// start (engine spin-up + Bluetooth/AirPods buffering) means audio renders a beat AFTER we
+    /// first push elapsed=0, so iOS's extrapolation runs a second or two ahead — the "lock screen
+    /// shows 0:05 while the app shows 0:03" mismatch, and since the latency varies the gap does too.
+    /// Pushing the render-accurate head here corrects it within ~1s and keeps the two surfaces
+    /// pinned. Throttled by position delta so the MediaPlayer IPC stays ~1Hz; the pushed value is
+    /// monotone, so the lock-screen scrubber only steps forward (apart from the one intended startup
+    /// correction). nowPlayingUpdate() reports `parkedTime`, so this is correct in the background too.
+    private func maybeSyncNowPlaying(at pos: TimeInterval) {
+        guard state == .playing else { return }
+        #if os(macOS)
+        // Off-screen there's no Now-Playing surface reading us live: macOS Control Center
+        // extrapolates from the last push, and we still push a fresh value on every discrete event
+        // (play/pause/seek/track-change) and on re-show via enterForeground(). So skip the ~1Hz IPC
+        // resync while not visible. iOS keeps it unconditionally (the lock screen needs the resync).
+        guard isForeground else { return }
+        #endif
+        if abs(pos - lastNowPlayingSyncPos) >= 1 {
+            lastNowPlayingSyncPos = pos
+            nowPlayingUpdate()
+        }
+    }
+
     private func flushListen() {
         guard pendingListen > 0, let track = currentTrack else { pendingListen = 0; return }
         let seconds = pendingListen
@@ -992,6 +1157,22 @@ final class AudioPlayer {
             self, selector: #selector(handleRouteChange),
             name: AVAudioSession.routeChangeNotification, object: nil
         )
+        #elseif os(macOS)
+        // macOS never delivers scenePhase .background while audio plays and the window is merely
+        // occluded/minimized/hidden, so the iOS power optimization (freeze the 5Hz scrubber publish
+        // off-screen) would never fire. Drive isForeground from window occlusion instead:
+        // NSApp.occlusionState drops .visible exactly when no window is on-screen (incl. Cmd-H,
+        // minimize, full cover) and stays .visible for an unfocused-but-visible window — so a
+        // background, partially-overlapped or just-not-frontmost window keeps its live scrubber,
+        // while a truly invisible one stops invalidating SwiftUI (and lets App Nap kick in).
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeOcclusionStateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                NSApp.occlusionState.contains(.visible) ? self.enterForeground() : self.enterBackground()
+            }
+        }
         #endif
     }
 

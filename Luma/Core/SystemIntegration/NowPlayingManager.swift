@@ -22,7 +22,7 @@ final class NowPlayingManager {
     /// jumping to 0 and snapping back).
     private var currentTrackID: UUID?
 
-    func update(track: Track, isPlaying: Bool, elapsed: TimeInterval) {
+    func update(track: Track, isPlaying: Bool, elapsed: TimeInterval, duration: TimeInterval) {
         // Rebuild the (expensive) metadata + artwork ONLY when the track actually changes.
         if track.id != currentTrackID {
             currentTrackID = track.id
@@ -30,7 +30,10 @@ final class NowPlayingManager {
                 MPMediaItemPropertyTitle: track.title,
                 MPMediaItemPropertyArtist: track.artistName,
                 MPMediaItemPropertyAlbumTitle: track.albumTitle,
-                MPMediaItemPropertyPlaybackDuration: track.duration,
+                // Use the DECODED length, matching the elapsed head (which is clamped to it). The
+                // metadata `track.duration` can disagree for VBR/MP3 with bad headers, making the
+                // lock-screen scrubber stall or jump against the in-app one.
+                MPMediaItemPropertyPlaybackDuration: duration > 0 ? duration : track.duration,
                 MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
             ]
             if let artworkData = track.album?.artworkData {

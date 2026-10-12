@@ -37,7 +37,7 @@ struct EqualizerView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .lumaForcedAppearance()
         .presentationDetents([.large])
     }
 

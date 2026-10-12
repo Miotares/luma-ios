@@ -16,6 +16,8 @@ actor PaletteExtractor {
     private init() {}
 
     private var cache: [UUID: ColorPalette] = [:]
+    private var insertionOrder: [UUID] = []
+    private let cacheLimit = 256
 
     func palette(for id: UUID, imageData: Data?) async -> ColorPalette? {
         if let hit = cache[id] { return hit }
@@ -25,12 +27,22 @@ actor PaletteExtractor {
             PaletteExtractor.extract(from: data)
         }.value
 
-        if let result { cache[id] = result }
+        if let result {
+            cache[id] = result
+            insertionOrder.append(id)
+            // Bound the cache (was unbounded → one entry per distinct album played, forever, incl.
+            // deleted albums). FIFO eviction; ColorPalette is tiny, so a generous cap is plenty.
+            if insertionOrder.count > cacheLimit {
+                let evict = insertionOrder.removeFirst()
+                cache.removeValue(forKey: evict)
+            }
+        }
         return result
     }
 
     func invalidate(for id: UUID) {
         cache.removeValue(forKey: id)
+        insertionOrder.removeAll { $0 == id }
     }
 
     // MARK: - Pixel Analysis (runs off main actor)

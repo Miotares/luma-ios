@@ -33,12 +33,26 @@ func tracksRowDescriptor(sortByTitle: Bool = false, prefetchEntries: Bool = true
     return d
 }
 
-/// Artist fetch that prefetches `albums` + `tracks`, which every `ArtistListRow` reads
-/// (`sortedAlbums.first?.artworkData`, `albumCount`, `trackCount`) — otherwise each artist row
-/// faults two relationships from SQLite on the main thread while scrolling the Artists list.
-func artistsRowDescriptor() -> FetchDescriptor<Artist> {
+/// Only the tracks that sit in at least one playlist, with the two relationships the playlist
+/// surfaces walk prefetched. This is what `validEntryTrackMap` actually needs: a track without
+/// entries contributes nothing to the map. Feeding the map from the WHOLE table instead cost a
+/// 36–62 ms main-thread fetch (2k-track library) every time a playlist surface was (re)created or
+/// a save republished its @Query — for a result that only ever involves the playlist's own tracks.
+func playlistTracksDescriptor() -> FetchDescriptor<Track> {
+    var d = FetchDescriptor<Track>(predicate: #Predicate { !$0.playlistEntries.isEmpty })
+    d.relationshipKeyPathsForPrefetching = [\.album, \.playlistEntries]
+    return d
+}
+
+/// Artist fetch that prefetches `albums`, which every artist row reads
+/// (`sortedAlbums.first?.artworkData`, `albumCount`). `tracks` is prefetched only on request:
+/// prefetching it materializes EVERY track of EVERY artist (36 ms for 76 artists / 2k tracks, vs
+/// 4 ms without) just so a row can show `trackCount` — which a row gets far cheaper by faulting
+/// its own to-many (~0.03 ms, only for rows that actually appear). Pass `prefetchTracks: true`
+/// where the tracks themselves are walked for every artist (Statistics' listening-time ranking).
+func artistsRowDescriptor(prefetchTracks: Bool = false) -> FetchDescriptor<Artist> {
     var d = FetchDescriptor<Artist>(sortBy: [SortDescriptor(\.name)])
-    d.relationshipKeyPathsForPrefetching = [\.albums, \.tracks]
+    d.relationshipKeyPathsForPrefetching = prefetchTracks ? [\.albums, \.tracks] : [\.albums]
     return d
 }
 
@@ -53,7 +67,12 @@ extension Playlist {
 struct PlaylistsView: View {
     @Environment(AppContainer.self) private var app
     @Query(sort: \Playlist.sortIndex) private var playlists: [Playlist]
-    @Query(tracksRowDescriptor()) private var allTracks: [Track]
+    /// Tracks that are in some playlist — all the entry→track map needs (see the descriptor).
+    @Query(playlistTracksDescriptor()) private var playlistTracks: [Track]
+    /// One-row probes: "does ANY track carry a genre / a year?" gates the Genre / Decade smart
+    /// tiles. Asked as LIMIT-1 queries so answering it doesn't load the whole tracks table.
+    @Query(PlaylistsView.anyGenreDescriptor) private var genreProbe: [Track]
+    @Query(PlaylistsView.anyYearDescriptor) private var yearProbe: [Track]
     @State private var showingCreate = false
     @State private var newPlaylistName = ""
     @State private var isReordering = false
@@ -66,6 +85,18 @@ struct PlaylistsView: View {
     /// Non-nil while the cover editor is presented for a specific playlist (from the gallery
     /// context menu).
     @State private var coverEditorPlaylist: Playlist?
+
+    private static let anyGenreDescriptor: FetchDescriptor<Track> = {
+        var d = FetchDescriptor<Track>(predicate: #Predicate { $0.genre != nil && $0.genre != "" })
+        d.fetchLimit = 1
+        return d
+    }()
+
+    private static let anyYearDescriptor: FetchDescriptor<Track> = {
+        var d = FetchDescriptor<Track>(predicate: #Predicate { $0.year != nil })
+        d.fetchLimit = 1
+        return d
+    }()
 
     var body: some View {
         VStack(spacing: 0) {
@@ -97,7 +128,7 @@ struct PlaylistsView: View {
         .sheet(item: $coverEditorPlaylist) { playlist in
             PlaylistCoverEditor(
                 playlist: playlist,
-                tracks: playlist.safeSortedTracks(using: validEntryTrackMap(allTracks))
+                tracks: playlist.safeSortedTracks(using: validEntryTrackMap(playlistTracks))
             )
             .environment(app)
         }
@@ -133,13 +164,13 @@ struct PlaylistsView: View {
             Text("Playlists")
                 .font(.system(size: 34, weight: .bold))
                 .tracking(-0.6)
-                .foregroundStyle(.white)
+                .foregroundStyle(.lumaInk())
             Spacer()
             if isReordering {
                 Button { withAnimation { isReordering = false } } label: {
                     Text("Fertig")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.lumaInk())
                         .padding(.horizontal, 16)
                         .frame(height: 38)
                         .contentShape(Rectangle())
@@ -147,19 +178,20 @@ struct PlaylistsView: View {
                 }
                 .buttonStyle(.plain)
             } else {
-                #if os(iOS) || os(visionOS)
+                // Reorder mode opens the compact list; on macOS its `.onMove` rows reorder by
+                // mouse drag (no edit mode), on iOS via the active edit handles.
                 if playlists.count >= 2 {
                     Button { withAnimation { isReordering = true } } label: {
                         Image(systemName: "arrow.up.arrow.down")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.lumaInk())
                             .frame(width: 38, height: 38)
                             .contentShape(Rectangle())
                             .glassEffect(.regular, in: .circle)
                     }
                     .buttonStyle(.plain)
+                    .help("Reihenfolge ändern")
                 }
-                #endif
                 Menu {
                     Button { showingImporter = true } label: {
                         Label("Playlists importieren", systemImage: "square.and.arrow.down")
@@ -172,16 +204,30 @@ struct PlaylistsView: View {
                 } label: {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.lumaInk())
+                        #if os(iOS) || os(visionOS)
                         .frame(width: 38, height: 38)
                         .contentShape(Rectangle())
                         .glassEffect(.regular, in: .circle)
+                        #endif
                 }
                 .menuIndicator(.hidden)
+                #if os(macOS)
+                // A macOS Menu defaults to the bordered pop-up-button style, which draws a small
+                // gray pill AROUND the label — so the "…" looked tiny and boxy next to the round
+                // ⇅ / + buttons. Borderless removes that chrome; then the glass circle is put on
+                // the MENU itself (not the label): a .glassEffect label carries no layout footprint,
+                // so it collapsed to the bare glyph. Framing + glassing the menu gives a real 38×38
+                // round button matching the ⇅ / + Buttons beside it.
+                .menuStyle(.borderlessButton)
+                .frame(width: 38, height: 38)
+                .contentShape(Rectangle())
+                .glassEffect(.regular, in: .circle)
+                #endif
                 Button { showingCreate = true } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.lumaInk())
                         .frame(width: 38, height: 38)
                         .contentShape(Rectangle())
                         .glassEffect(.regular, in: .circle)
@@ -196,19 +242,15 @@ struct PlaylistsView: View {
 
     // MARK: - Content
 
-    private var hasGenres: Bool {
-        allTracks.contains { !($0.genre?.trimmingCharacters(in: .whitespaces).isEmpty ?? true) }
-    }
-    private var hasYears: Bool {
-        allTracks.contains { $0.year != nil }
-    }
+    private var hasGenres: Bool { !genreProbe.isEmpty }
+    private var hasYears: Bool { !yearProbe.isEmpty }
 
     @ViewBuilder
     private var playlistsContent: some View {
         if isReordering {
             reorderList
         } else {
-            let map = validEntryTrackMap(allTracks)
+            let map = validEntryTrackMap(playlistTracks)
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if smartPlaylistsEnabled {
@@ -219,7 +261,7 @@ struct PlaylistsView: View {
                     Text("Deine Playlists")
                         .font(.system(size: 20, weight: .bold))
                         .tracking(-0.35)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.lumaInk())
                         .padding(.horizontal, 20)
                         .padding(.top, 28)
                         .padding(.bottom, 12)
@@ -264,7 +306,7 @@ struct PlaylistsView: View {
     /// handles, so playlists can be dragged into a custom order. Order is persisted to
     /// `Playlist.sortIndex` on every move.
     private var reorderList: some View {
-        let map = validEntryTrackMap(allTracks)
+        let map = validEntryTrackMap(playlistTracks)
         return List {
             ForEach(playlists) { playlist in
                 HStack(spacing: 12) {
@@ -272,9 +314,18 @@ struct PlaylistsView: View {
                         .frame(width: 46, height: 46)
                     Text(playlist.name)
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.lumaInk())
                         .lineLimit(1)
                     Spacer()
+                    #if os(macOS)
+                    // macOS has no edit-mode reorder handles, so the rows looked static even though
+                    // they drag. A trailing grab handle signals that the row can be dragged to
+                    // reorder (the whole row is draggable via .onMove; this is the visual cue).
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.lumaInk(0.3))
+                        .accessibilityHidden(true)
+                    #endif
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -297,21 +348,10 @@ struct PlaylistsView: View {
     }
 
     private var playlistsEmptyHint: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "music.note.list")
-                .font(.system(size: 40))
-                .foregroundStyle(.white.opacity(0.18))
-            Text("Keine Playlists")
-                .font(.subheadline.bold())
-                .foregroundStyle(.white.opacity(0.4))
-            Text("Tippe auf + um deine erste Playlist zu erstellen.")
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.25))
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 26)
-        .padding(.horizontal, 40)
+        LumaEmptyState(icon: "music.note.list", title: "Keine Playlists",
+                       subtitle: "Tippe auf + um deine erste Playlist zu erstellen.")
+            .padding(.vertical, 26)
+            .padding(.horizontal, 40)
     }
 }
 
@@ -329,11 +369,11 @@ struct PlaylistCard: View {
                 Text(playlist.name)
                     .font(.system(size: 13, weight: .medium))
                     .tracking(-0.2)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.lumaInk())
                     .lineLimit(1)
                 Text(CountText.songs(tracks.count))
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.42))
+                    .foregroundStyle(.lumaInk(0.42))
                     .lineLimit(1)
             }
             .padding(.top, 8)
@@ -421,7 +461,17 @@ struct PlaylistArtworkView: View {
             .aspectRatio(1, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         } else {
-            ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.id.uuidString, cornerRadius: cornerRadius, size: nil)
+            // Single distinct album → one cover fills the tile. macOS caps the decode below the
+            // stored ~1024px (the 220pt detail header @2x ≈ 440px, so 512 stays crisp) instead of
+            // caching a ~4 MB full bitmap per surface. iOS keeps the default (nil = full-res), so
+            // its denser @3x header is unchanged — same `@full` cache bucket as before.
+            #if os(macOS)
+            let fallbackMax: Int? = 512
+            #else
+            let fallbackMax: Int? = nil
+            #endif
+            ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.id.uuidString,
+                        cornerRadius: cornerRadius, size: nil, maxPixel: fallbackMax)
                 .aspectRatio(1, contentMode: .fit)
         }
     }

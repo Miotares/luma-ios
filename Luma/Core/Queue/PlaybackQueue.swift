@@ -16,6 +16,12 @@ final class PlaybackQueue {
 
     private var originalOrder: [Track] = []
 
+    /// Guards the user-facing relative-skip actions (advance / playPrevious) so rapid taps can't
+    /// interleave: each mutates `currentIndex` then SUSPENDS across the track decode, and a second
+    /// tap landing in that window would read the already-moved index and skip twice. Re-entrant
+    /// skips are dropped while one is in flight; the user can skip again once it completes.
+    private var isSkipping = false
+
     weak var player: AudioPlayer?
 
     // MARK: - Computed
@@ -25,15 +31,13 @@ final class PlaybackQueue {
         return items[currentIndex]
     }
 
+    /// Whether "forward" leads anywhere. Observed by the transport buttons to disable forward at the
+    /// end of the queue (repeat off), instead of advance() calling stop() and dismissing the player.
     var hasNext: Bool {
         switch repeatMode {
         case .all, .one: return !items.isEmpty
         case .off: return currentIndex < items.count - 1
         }
-    }
-
-    var hasPrevious: Bool {
-        currentIndex > 0 || (player?.playheadSeconds ?? 0) > 3
     }
 
     var upNext: [Track] {
@@ -61,25 +65,18 @@ final class PlaybackQueue {
     }
 
     func playNext(_ tracks: [Track]) {
-        let insertAt = currentIndex + 1
-        items.insert(contentsOf: tracks, at: min(insertAt, items.count))
-        originalOrder.insert(contentsOf: tracks, at: min(insertAt, originalOrder.count))
-    }
-
-    func remove(at offsets: IndexSet) {
-        let currentId = currentTrack?.id
-        items.remove(atOffsets: offsets)
-        if let id = currentId {
-            currentIndex = items.firstIndex(where: { $0.id == id }) ?? max(0, currentIndex - 1)
+        let currentID = currentTrack?.id
+        items.insert(contentsOf: tracks, at: min(currentIndex + 1, items.count))
+        // Insert right AFTER the current track in `originalOrder` too. `currentIndex` indexes the
+        // (possibly shuffled) `items`, so it is NOT a valid position in `originalOrder` — using it
+        // there dropped "Play Next" tracks at an arbitrary spot once shuffle was turned off. Resolve
+        // the current track's real position in `originalOrder` by id instead (append if not found).
+        if let currentID, let oi = originalOrder.firstIndex(where: { $0.id == currentID }) {
+            originalOrder.insert(contentsOf: tracks, at: oi + 1)
+        } else {
+            originalOrder.append(contentsOf: tracks)
         }
-    }
-
-    func move(from source: IndexSet, to destination: Int) {
-        let currentId = currentTrack?.id
-        items.move(fromOffsets: source, toOffset: destination)
-        if let id = currentId {
-            currentIndex = items.firstIndex(where: { $0.id == id }) ?? currentIndex
-        }
+        player?.invalidatePreload()
     }
 
     /// Replaces the upcoming tracks (everything after the current one) with `newUpNext`,
@@ -89,12 +86,46 @@ final class PlaybackQueue {
         let pivot = currentIndex + 1
         guard pivot >= 0, pivot <= items.count else { return }
         items.replaceSubrange(pivot..<items.count, with: newUpNext)
+        // While NOT shuffled, `items` IS the canonical order, so a manual reorder must mirror into
+        // `originalOrder` — otherwise a later shuffle toggle (or `shuffled(keeping:)`) would revert
+        // to the pre-reorder order. While shuffled, `originalOrder` stays the un-shuffled sequence so
+        // turning shuffle off still restores it; only the SET must match (a reorder never changes it).
+        if shuffleMode == .off { originalOrder = items }
+        player?.invalidatePreload()
     }
 
     func clear() {
         items = []
         originalOrder = []
         currentIndex = -1
+    }
+
+    /// Removes the up-next track at `offset` (0 = the first track after the current one). POSITION-
+    /// based on purpose: a queue legitimately repeats the same track (e.g. a library with duplicate
+    /// imports, or "play next" of an already-queued song), and the old id-based `removeTrack` used
+    /// `removeAll`, which deleted EVERY occurrence — so removing one row also dropped its duplicate
+    /// further down ("removes the song after, not the one I clicked"). This drops exactly the tapped
+    /// slot. The current track + history are untouched, so `currentIndex` doesn't move.
+    func removeUpNext(at offset: Int) {
+        let index = currentIndex + 1 + offset
+        guard index > currentIndex, items.indices.contains(index) else { return }
+        let removed = items.remove(at: index)
+        if shuffleMode == .off {
+            // `items` is canonical while not shuffled — mirror the removal.
+            originalOrder = items
+        } else if let oi = originalOrder.firstIndex(where: { $0.id == removed.id }) {
+            // Drop ONE matching occurrence so turning shuffle off later can't resurrect it.
+            originalOrder.remove(at: oi)
+        }
+        player?.invalidatePreload()
+    }
+
+    /// Reorders the up-next slice (drag-to-reorder). Offsets are relative to the first up-next slot,
+    /// so the current track + history stay put. Mirrors the existing `replaceUpNext` semantics.
+    func moveUpNext(fromOffsets source: IndexSet, toOffset destination: Int) {
+        var up = upNext
+        up.move(fromOffsets: source, toOffset: destination)
+        replaceUpNext(with: up)
     }
 
     /// Drops a track that was just deleted from the library, keeping the current track
@@ -110,6 +141,9 @@ final class PlaybackQueue {
         } else {
             currentIndex = min(currentIndex, items.count - 1)
         }
+        // The immediate next track may have just been removed — drop any stale gapless preload of
+        // it (mirrors every other queue mutation). Harmless when the removed track wasn't preloaded.
+        player?.invalidatePreload()
         return wasCurrent
     }
 
@@ -129,6 +163,9 @@ final class PlaybackQueue {
     }
 
     func advance() async {
+        guard !isSkipping else { return }
+        isSkipping = true
+        defer { isSkipping = false }
         switch repeatMode {
         case .one:
             await player?.seek(to: 0)
@@ -165,6 +202,9 @@ final class PlaybackQueue {
     }
 
     func playPrevious() async {
+        guard !isSkipping else { return }
+        isSkipping = true
+        defer { isSkipping = false }
         if (player?.playheadSeconds ?? 0) > 3 {
             await player?.seek(to: 0)
         } else if currentIndex > 0 {
@@ -200,6 +240,8 @@ final class PlaybackQueue {
             items = originalOrder
             currentIndex = current.flatMap { c in items.firstIndex(where: { $0.id == c.id }) } ?? 0
         }
+        // The immediate next track just changed — drop any stale gapless preload of the old one.
+        player?.invalidatePreload()
     }
 
     /// Re-mixes the upcoming tracks into a fresh random order, leaving the current track and
@@ -223,6 +265,10 @@ final class PlaybackQueue {
             attempts += 1
         }
         items = Array(items[..<pivot]) + mixed
+        // `originalOrder` stays the canonical un-shuffled sequence (reshuffle forces shuffle ON, so
+        // turning shuffle off should still restore it) — but the freshly mixed tail means the next
+        // track changed, so drop any stale gapless preload of the previous one.
+        player?.invalidatePreload()
     }
 
     func toggleRepeat() {

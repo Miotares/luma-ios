@@ -103,15 +103,15 @@ struct ImportView: View {
                 .frame(height: 52)
                 .background(
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(primary ? Color.white : Color.white.opacity(0.1))
+                        .fill(primary ? Color.lumaAccent : Color.lumaInk(0.1))
                 )
                 .overlay {
                     if !primary {
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(.white.opacity(0.16), lineWidth: 0.5)
+                            .strokeBorder(.lumaInk(0.16), lineWidth: 0.5)
                     }
                 }
-                .foregroundStyle(primary ? .black : .white)
+                .foregroundStyle(primary ? .lumaOnAccent : .lumaInk())
         }
         .buttonStyle(.plain)
     }

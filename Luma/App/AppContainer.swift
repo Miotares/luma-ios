@@ -4,6 +4,10 @@ import Observation
 
 @Observable
 final class AppContainer {
+    /// The single live container, so AppKit entry points without SwiftUI environment access
+    /// (the Dock menu) can reach the shared player/queue. There is only ever one window.
+    @MainActor static weak var shared: AppContainer?
+
     let player: AudioPlayer
     let equalizer: EQManager
     let queue: PlaybackQueue
@@ -11,7 +15,10 @@ final class AppContainer {
     let library: LibraryRepository
     let libraryFolders: LibraryFolders
     let folderScanner: FolderLibraryScanner
-    private(set) var currentPalette: ColorPalette?
+    let review = ReviewPromptManager()
+    /// Last sorted order of the macOS Songs page, kept here because that page is destroyed on
+    /// every sidebar section switch (see `MacLibrarySongsPage`).
+    let songOrder = SongOrderCache()
 
     private let remoteCommands: RemoteCommandHandler
     private let modelContext: ModelContext
@@ -51,6 +58,8 @@ final class AppContainer {
         lib.seedPlaylistOrderIfNeeded()
         // Backfill denormalized playlist-entry metadata (one-time) so backups/placeholders work.
         lib.backfillEntryMetadataIfNeeded()
+        // Reclaim disk from the abandoned full-resolution artwork cache (one-time, off-main).
+        Task.detached { LegacyArtworkCleanup.purgeIfNeeded() }
 
         // After a music import, re-link any playlist placeholders to the new tracks.
         importManager.onImportFinished = { [weak self] in self?.library.relinkPlaylistPlaceholders() }
@@ -69,8 +78,11 @@ final class AppContainer {
             }
         }
 
-        p.onTrackPlayed = { track in
+        p.onTrackPlayed = { [weak self] track in
             try? lib.recordPlay(track: track)
+            // A genuinely-listened track is our "success moment": count it toward a qualified
+            // session and let the review manager decide whether it's time to ask for a rating.
+            self?.review.registerPlaybackActivity()
         }
 
         p.onListened = { track, seconds in
@@ -81,18 +93,14 @@ final class AppContainer {
         // it asks us to persist them at safe boundaries (pause/stop), not on every tick.
         p.onStatsShouldPersist = { lib.saveStats() }
 
-        p.onTrackChanged = { [weak self] track in
-            guard let self else { return }
-            let artworkData = track.album?.artworkData
-            let paletteId = track.album?.id ?? track.id
-            Task {
-                self.currentPalette = await PaletteExtractor.shared.palette(for: paletteId, imageData: artworkData)
-            }
-            self.savePlaybackState()
-        }
+        // Persist the queue/playhead on every track change. (No palette extraction here — PlayerView
+        // derives its own palette via PaletteExtractor; the old AppContainer.currentPalette was
+        // written here but never read, duplicating that work.)
+        p.onTrackChanged = { [weak self] _ in self?.savePlaybackState() }
 
         p.onPersist = { [weak self] in self?.savePlaybackState() }
 
+        AppContainer.shared = self
         restoreLastSession()
     }
 
@@ -123,8 +131,12 @@ final class AppContainer {
     /// session active so it stays the Now-Playing app and resumable from the lock screen / AirPods.
     func enterBackground() { player.enterBackground() }
 
-    /// App returned to the foreground — refresh the now-playing info.
-    func enterForeground() { player.enterForeground() }
+    /// App returned to the foreground — refresh the now-playing info and re-arm review-session
+    /// counting so the next bout of playback counts as a fresh qualified session.
+    func enterForeground() {
+        player.enterForeground()
+        review.startNewForegroundSession()
+    }
 
     /// Restores the last session's queue and parks the player paused at the saved position.
     /// No-op when nothing is saved or the referenced tracks are gone.

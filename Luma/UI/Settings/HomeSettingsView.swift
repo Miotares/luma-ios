@@ -35,7 +35,7 @@ struct HomeSettingsView: View {
                         .pickerStyle(.segmented)
                         Text("Wie Alben auf der Startseite standardmäßig angezeigt werden.")
                             .font(.caption)
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(.lumaInk(0.4))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.horizontal, 20)
@@ -45,7 +45,7 @@ struct HomeSettingsView: View {
 
                     label("Abschnitte")
                     Toggle(isOn: $showRecentlyAdded) {
-                        Text("Zuletzt hinzugefügt anzeigen").foregroundStyle(.white)
+                        Text("Zuletzt hinzugefügt anzeigen").foregroundStyle(.lumaInk())
                     }
                     .tint(Color.lumaToggle)
                     .padding(.horizontal, 20)
@@ -59,11 +59,11 @@ struct HomeSettingsView: View {
                             ForEach(Array(playlists.enumerated()), id: \.element.id) { index, playlist in
                                 Button { togglePin(playlist.id) } label: {
                                     HStack {
-                                        Text(playlist.name).foregroundStyle(.white).lineLimit(1)
+                                        Text(playlist.name).foregroundStyle(.lumaInk()).lineLimit(1)
                                         Spacer(minLength: 12)
                                         Image(systemName: pinnedIDs.contains(playlist.id) ? "pin.fill" : "pin")
                                             .font(.system(size: 15))
-                                            .foregroundStyle(pinnedIDs.contains(playlist.id) ? Color.lumaToggle : .white.opacity(0.28))
+                                            .foregroundStyle(pinnedIDs.contains(playlist.id) ? Color.lumaToggle : .lumaInk(0.28))
                                     }
                                     .padding(.horizontal, 20)
                                     .frame(minHeight: 50)
@@ -77,7 +77,7 @@ struct HomeSettingsView: View {
 
                         Text("Angeheftete Playlists erscheinen oben auf der Startseite.")
                             .font(.caption)
-                            .foregroundStyle(.white.opacity(0.35))
+                            .foregroundStyle(.lumaInk(0.35))
                             .padding(.horizontal, 20)
                             .padding(.top, 8)
                     }
@@ -95,14 +95,14 @@ struct HomeSettingsView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .lumaForcedAppearance()
         .presentationDetents([.medium, .large])
     }
 
     private func label(_ key: String.LocalizationValue) -> some View {
         Text(String(localized: key).uppercased())
             .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.4))
+            .foregroundStyle(.lumaInk(0.4))
             .padding(.horizontal, 20)
             .padding(.top, 24)
             .padding(.bottom, 8)

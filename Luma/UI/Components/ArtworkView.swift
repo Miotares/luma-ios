@@ -19,6 +19,53 @@ nonisolated(unsafe) private let artworkImageCache: NSCache<NSString, ImageBox> =
     return cache
 }()
 
+/// Serializes + DEDUPES cover decodes so they can't peg the CPU against the real-time audio render
+/// thread. Two problems the on-device logs exposed while a track played:
+///  (1) the SAME cover was decoded several times IN PARALLEL (e.g. now-playing shown in 3 places →
+///      3 identical ImageIO decodes, ~1.2 s each cold) — pure waste that saturated the cores and
+///      starved the render thread into an underrun (the "last buffer repeats" artifact);
+///  (2) a queue/list reveal fired a screenful of decodes at once.
+/// Fix: cap concurrency low AND coalesce same-key decodes into one shared task; the actual decode
+/// runs at `.background` so it yields to playback. Covers appear a touch later cold — inaudible win.
+private actor ArtworkDecodeLimiter {
+    static let shared = ArtworkDecodeLimiter(limit: 2)
+    private let limit: Int
+    private var active = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    /// In-flight decodes keyed by cache key, so N callers wanting the same cover share ONE decode.
+    private var inFlight: [NSString: Task<Image?, Never>] = [:]
+
+    init(limit: Int) { self.limit = limit }
+
+    private func acquire() async {
+        if active < limit { active += 1; return }
+        // No free slot: park until a release hands one over (the slot transfers, so `active`
+        // stays at `limit` rather than being re-incremented here).
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    private func release() {
+        if waiters.isEmpty { active -= 1 }
+        else { waiters.removeFirst().resume() }   // hand the slot straight to the next waiter
+    }
+
+    /// Concurrency-capped, deduped decode. `inFlight[key]` is set before the first `await`, so a
+    /// concurrent caller for the same key awaits the SAME task instead of starting a duplicate.
+    func decode(key: NSString?, data: Data, maxPixel: Int?) async -> Image? {
+        if let key, let existing = inFlight[key] { return await existing.value }
+        let task = Task<Image?, Never> {
+            await self.acquire()
+            let image = await ArtworkView.rawDecode(data, maxPixel: maxPixel, key: key)
+            self.release()   // same-actor (the Task inherits this actor's isolation) → no await
+            return image
+        }
+        if let key { inFlight[key] = task }
+        let result = await task.value
+        if let key { inFlight.removeValue(forKey: key) }
+        return result
+    }
+}
+
 struct ArtworkView: View {
     /// The bytes are provided lazily (autoclosure) so a row NEVER faults the SwiftData artwork
     /// blob just to pass it in — the provider is called only on a cache miss, inside `.task`
@@ -101,8 +148,15 @@ struct ArtworkView: View {
     private static func targetPixel(size: CGFloat?, maxPixel: Int?) -> Int? {
         if let maxPixel { return maxPixel }
         guard let size else { return nil }
-        // ×3 covers the densest (@3x) screens; clamp so it never exceeds the stored ~1024px.
-        return min(1024, Int((size * 3).rounded(.up)))
+        // Decode for the densest backing scale the platform actually has: @3x on iOS, but macOS
+        // tops out at @2x — decoding ×3 there inflated every cover ~2.25× past what's displayed,
+        // burning CPU and filling the bitmap cache that much faster. Clamp to the stored ~1024px.
+        #if os(macOS)
+        let scale: CGFloat = 2
+        #else
+        let scale: CGFloat = 3
+        #endif
+        return min(1024, Int((size * scale).rounded(.up)))
     }
 
     /// Cache key = base id + the decode bucket, so a row's 132px thumbnail and the full-screen
@@ -119,6 +173,14 @@ struct ArtworkView: View {
     /// totalCostLimit can bound memory). Runs at `.utility` so a burst of cover decodes during
     /// fast scrolling yields to user-initiated work like starting playback.
     private static func decode(_ data: Data, maxPixel: Int?, key: NSString?) async -> Image? {
+        // Route through the limiter so concurrency is capped and same-key decodes are deduped.
+        await ArtworkDecodeLimiter.shared.decode(key: key, data: data, maxPixel: maxPixel)
+    }
+
+    /// The actual ImageIO decode (off-main at `.utility`) + cache write. Called ONLY via
+    /// `ArtworkDecodeLimiter.decode` so it is concurrency-capped and deduped (so the same cover is
+    /// never decoded by several views at once).
+    fileprivate static func rawDecode(_ data: Data, maxPixel: Int?, key: NSString?) async -> Image? {
         let decoded = await Task.detached(priority: .utility) { () -> (image: Image, cost: Int)? in
             guard let cg = Self.cgImage(from: data, maxPixel: maxPixel) else { return nil }
             let cost = cg.width * cg.height * 4

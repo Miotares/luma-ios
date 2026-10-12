@@ -59,7 +59,17 @@ struct PlaylistCoverEditor: View {
             }
             .onChange(of: photoItem) { _, item in loadPhoto(item) }
         }
-        .preferredColorScheme(.dark)
+        .lumaForcedAppearance()
+        // A fully customised cover is easy to lose to an accidental swipe-down — require an
+        // explicit Abbrechen/Sichern once anything has changed.
+        .interactiveDismissDisabled(isDirty)
+    }
+
+    /// True once the style, photo, or generated recipe differs from what's stored.
+    private var isDirty: Bool {
+        selectedStyle != playlist.coverStyle
+            || photoData != playlist.customArtworkData
+            || genConfig != playlist.generatedConfigValue
     }
 
     // MARK: - Preview
@@ -70,7 +80,7 @@ struct PlaylistCoverEditor: View {
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(.white.opacity(0.08), lineWidth: 0.5)
+                    .strokeBorder(.lumaInk(0.08), lineWidth: 0.5)
             )
             .shadow(color: .black.opacity(0.5), radius: 22, y: 14)
             .animation(.smooth(duration: 0.25), value: selectedStyle)
@@ -105,10 +115,10 @@ struct PlaylistCoverEditor: View {
             VStack(spacing: 8) {
                 Image(systemName: "photo.badge.plus")
                     .font(.system(size: 34))
-                    .foregroundStyle(.white.opacity(0.3))
+                    .foregroundStyle(.lumaInk(0.3))
                 Text("Foto auswählen")
                     .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(.lumaInk(0.4))
             }
         }
     }
@@ -138,7 +148,7 @@ struct PlaylistCoverEditor: View {
     private var mosaicControls: some View {
         Text("Das Cover wird automatisch aus den ersten Titeln deiner Playlist gebildet.")
             .font(.system(size: 13))
-            .foregroundStyle(.white.opacity(0.45))
+            .foregroundStyle(.lumaInk(0.45))
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
     }
@@ -152,8 +162,8 @@ struct PlaylistCoverEditor: View {
                     .font(.system(size: 15, weight: .semibold))
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-                    .foregroundStyle(.black)
+                    .background(Color.lumaAccent, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .foregroundStyle(.lumaOnAccent)
             }
             .buttonStyle(.plain)
 
@@ -171,7 +181,7 @@ struct PlaylistCoverEditor: View {
 
             Label("Dein Foto bleibt auf dem Gerät – es wird nichts hochgeladen.", systemImage: "lock.fill")
                 .font(.system(size: 12))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.lumaInk(0.4))
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity)
         }
@@ -184,7 +194,7 @@ struct PlaylistCoverEditor: View {
             Toggle(isOn: $genConfig.showTitle) {
                 Text("Playlist-Titel anzeigen")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(.lumaInk(0.9))
             }
             .tint(Color.lumaToggle)
 
@@ -225,7 +235,7 @@ struct PlaylistCoverEditor: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(.lumaInk(0.55))
             content()
         }
     }
@@ -253,7 +263,7 @@ struct PlaylistCoverEditor: View {
                 .frame(width: 60, height: 60)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(.white, lineWidth: selected ? 2.5 : 0)
+                        .strokeBorder(.lumaAccent, lineWidth: selected ? 2.5 : 0)
                 )
         }
         .buttonStyle(.plain)
@@ -267,7 +277,7 @@ struct PlaylistCoverEditor: View {
             Circle()
                 .fill(GeneratedCoverConfig.swatchGradient(hue: hue))
                 .frame(width: 46, height: 46)
-                .overlay(Circle().strokeBorder(.white, lineWidth: selected ? 2.5 : 0))
+                .overlay(Circle().strokeBorder(.lumaAccent, lineWidth: selected ? 2.5 : 0))
         }
         .buttonStyle(.plain)
     }
@@ -276,10 +286,10 @@ struct PlaylistCoverEditor: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(selected ? .black : .white.opacity(0.85))
+                .foregroundStyle(selected ? .lumaOnAccent : .lumaInk(0.85))
                 .padding(.horizontal, 14)
                 .frame(height: 34)
-                .background(Capsule().fill(selected ? Color.white : Color.white.opacity(0.08)))
+                .background(Capsule().fill(selected ? Color.lumaAccent : Color.lumaInk(0.08)))
         }
         .buttonStyle(.plain)
     }
@@ -290,19 +300,19 @@ struct PlaylistCoverEditor: View {
             withAnimation(.easeInOut(duration: 0.12)) { genConfig.glyph = sym }
         } label: {
             ZStack {
-                Circle().fill(Color.white.opacity(0.08))
+                Circle().fill(Color.lumaInk(0.08))
                 if let sym {
                     Image(systemName: sym)
                         .font(.system(size: 18))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(.lumaInk(0.85))
                 } else {
                     Image(systemName: "nosign")
                         .font(.system(size: 16))
-                        .foregroundStyle(.white.opacity(0.4))
+                        .foregroundStyle(.lumaInk(0.4))
                 }
             }
             .frame(width: 46, height: 46)
-            .overlay(Circle().strokeBorder(.white, lineWidth: selected ? 2.5 : 0))
+            .overlay(Circle().strokeBorder(.lumaAccent, lineWidth: selected ? 2.5 : 0))
         }
         .buttonStyle(.plain)
     }

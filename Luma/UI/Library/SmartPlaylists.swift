@@ -226,7 +226,7 @@ struct SmartPlaylistsSection: View {
                 Text("Smart-Playlists")
                     .font(.system(size: 20, weight: .bold))
                     .tracking(-0.35)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.lumaInk())
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
 
@@ -268,17 +268,17 @@ private struct SmartPlaylistTile: View {
                     .fill(Color.lumaSurface)
                     .overlay(
                         RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(.white.opacity(0.06), lineWidth: 0.5)
+                            .strokeBorder(.lumaInk(0.06), lineWidth: 0.5)
                     )
                 Image(systemName: systemImage)
                     .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(.lumaInk(0.9))
             }
             .frame(width: 112, height: 112)
 
             Text(title)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(.lumaInk(0.88))
                 .lineLimit(1)
                 .padding(.top, 7)
                 .frame(width: 112, alignment: .leading)
@@ -333,7 +333,7 @@ struct SmartPlaylistSettingsView: View {
     }
 
     private var separatorLine: some View {
-        Rectangle().fill(.white.opacity(0.08)).frame(height: 0.5)
+        Rectangle().fill(.lumaInk(0.08)).frame(height: 0.5)
     }
 
     var body: some View {
@@ -341,7 +341,7 @@ struct SmartPlaylistSettingsView: View {
             List {
                 Section {
                     Toggle(isOn: $enabled) {
-                        Text("Smart-Playlists anzeigen").foregroundStyle(.white)
+                        Text("Smart-Playlists anzeigen").foregroundStyle(.lumaInk())
                     }
                     .tint(Color.lumaToggle)
                     .listRowSeparator(.hidden)
@@ -357,9 +357,9 @@ struct SmartPlaylistSettingsView: View {
                                 HStack(spacing: 12) {
                                     Image(systemName: kind.systemImage)
                                         .font(.system(size: 14))
-                                        .foregroundStyle(.white.opacity(0.7))
+                                        .foregroundStyle(.lumaInk(0.7))
                                         .frame(width: 24)
-                                    Text(kind.title).foregroundStyle(.white)
+                                    Text(kind.title).foregroundStyle(.lumaInk())
                                 }
                             }
                             .tint(Color.lumaToggle)
@@ -368,7 +368,7 @@ struct SmartPlaylistSettingsView: View {
                         }
                         .onMove(perform: move)
                     } header: {
-                        Text("Sichtbare Listen").foregroundStyle(.white.opacity(0.45))
+                        Text("Sichtbare Listen").foregroundStyle(.lumaInk(0.45))
                     }
                 }
             }
@@ -388,7 +388,7 @@ struct SmartPlaylistSettingsView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+        .lumaForcedAppearance()
         .presentationDetents([.medium, .large])
     }
 }
@@ -407,17 +407,17 @@ private struct LumaFilterChip: View {
             Text(title)
                 .font(.system(size: 13, weight: .semibold))
                 .tracking(-0.2)
-                .foregroundStyle(isOn ? .black : .white.opacity(0.85))
+                .foregroundStyle(isOn ? .lumaOnAccent : .lumaInk(0.85))
                 .lineLimit(1)
                 .padding(.horizontal, 14)
                 .frame(height: 32)
                 .background(
                     Capsule(style: .continuous)
-                        .fill(isOn ? Color.lumaAccent : Color.white.opacity(0.08))
+                        .fill(isOn ? Color.lumaAccent : Color.lumaInk(0.08))
                 )
                 .overlay(
                     Capsule(style: .continuous)
-                        .strokeBorder(.white.opacity(isOn ? 0 : 0.12), lineWidth: 0.5)
+                        .strokeBorder(.lumaInk(isOn ? 0 : 0.12), lineWidth: 0.5)
                 )
         }
         .buttonStyle(.plain)
@@ -506,7 +506,7 @@ struct SmartPlaylistDetailView: View {
                     header(count: shown.count, activeTitles: activeTitles)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 116, leading: 20, bottom: 6, trailing: 20))
+                        .listRowInsets(EdgeInsets(top: headerTopInset, leading: 20, bottom: 6, trailing: 20))
                     if options.count >= 2 {
                         filterRail(options)
                             .listRowBackground(Color.clear)
@@ -519,7 +519,7 @@ struct SmartPlaylistDetailView: View {
                         // under an active selection, keep the rail usable instead of a blank list.
                         Text("Keine Titel für diese Auswahl")
                             .font(.system(size: 14))
-                            .foregroundStyle(.white.opacity(0.4))
+                            .foregroundStyle(.lumaInk(0.4))
                             .frame(maxWidth: .infinity, alignment: .center)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
@@ -532,9 +532,10 @@ struct SmartPlaylistDetailView: View {
                         ForEach(shown) { track in
                             TrackRow(track: track, showArtwork: true, showsMenu: true,
                                      isCurrent: track.id == app.player.currentTrack?.id,
-                                     isPlaying: app.player.state.isPlaying, liked: track.isLiked) { play(track, in: shown) }
+                                     isPlaying: track.id == app.player.currentTrack?.id && app.player.state.isPlaying, liked: track.isLiked,
+                                     onTap: { play(track, in: shown) })
                                 .equatable()
-                                .frame(minHeight: 56)
+                                .lumaSongRowMinHeight(48)
                                 .listRowBackground(Color.clear)
                                 .trackRowSeparator()
                                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
@@ -553,12 +554,14 @@ struct SmartPlaylistDetailView: View {
                 .lumaScrollClearance(playerActive: app.player.isActive)
             }
 
+            #if os(iOS) || os(visionOS)
             HStack {
                 LumaBackButton { dismiss() }
                 Spacer()
             }
             .padding(.horizontal, 18)
             .padding(.top, 18)
+            #endif
         }
         .lumaInlineNavTitle()
         .lumaHiddenNavBarBackground()
@@ -598,18 +601,28 @@ struct SmartPlaylistDetailView: View {
 
     // MARK: Header / empty / play
 
+    /// iOS clears the floating nav bar / notch with a big top inset; macOS has the native
+    /// title bar, so the header sits near the top instead of after a large gap.
+    private var headerTopInset: CGFloat {
+        #if os(macOS)
+        24
+        #else
+        116
+        #endif
+    }
+
     private func header(count: Int, activeTitles: [String]) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(kind.title)
                 .font(.system(size: 28, weight: .bold))
                 .tracking(-0.5)
-                .foregroundStyle(.white)
+                .foregroundStyle(.lumaInk())
                 .lineLimit(2)
             Text(activeTitles.isEmpty
                  ? CountText.songs(count)
                  : activeTitles.joined(separator: ", ") + " · " + CountText.songs(count))
                 .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.lumaInk(0.4))
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -619,13 +632,13 @@ struct SmartPlaylistDetailView: View {
         VStack(spacing: 14) {
             Image(systemName: kind.systemImage)
                 .font(.system(size: 44))
-                .foregroundStyle(.white.opacity(0.2))
+                .foregroundStyle(.lumaInk(0.2))
             Text(kind.title)
                 .font(.headline)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.lumaInk(0.4))
             Text(kind.emptyText)
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.25))
+                .foregroundStyle(.lumaInk(0.25))
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -687,14 +700,14 @@ struct SmartHubView: View {
                             HStack(spacing: 14) {
                                 Text(entry.title)
                                     .font(.system(size: 16, weight: .medium))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(.lumaInk())
                                 Spacer()
                                 Text(CountText.songs(entry.count))
                                     .font(.system(size: 13))
-                                    .foregroundStyle(.white.opacity(0.4))
+                                    .foregroundStyle(.lumaInk(0.4))
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.25))
+                                    .foregroundStyle(.lumaInk(0.25))
                             }
                             .padding(.horizontal, 20)
                             .frame(minHeight: 54)
@@ -713,7 +726,7 @@ struct SmartHubView: View {
                 Spacer()
                 Text(hub == .genre ? "Nach Genre" : "Nach Jahrzehnt")
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.lumaInk())
                 Spacer()
                 Color.clear.frame(width: 36, height: 36)
             }

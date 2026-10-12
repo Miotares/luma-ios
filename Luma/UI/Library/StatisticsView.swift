@@ -7,7 +7,9 @@ struct StatisticsView: View {
 
     @Query(sort: \Track.playCount, order: .reverse) private var topTracks: [Track]
     @Query private var albums: [Album]
-    @Query private var artists: [Artist]
+    // Prefetch `.tracks` (+ `.albums`) so summing each artist's listenSeconds doesn't fault every
+    // artist's tracks individually (N+1) the first time topArtists is computed.
+    @Query(artistsRowDescriptor(prefetchTracks: true)) private var artists: [Artist]
     @Query private var playlists: [Playlist]
 
     // Actual listened time (includes partial / skipped plays), not playCount × duration.
@@ -28,7 +30,12 @@ struct StatisticsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        // Compute the whole-library aggregates ONCE per pass and let the row loops close over the
+        // locals. `topPlayed.count` / `topArtists.count` sat INSIDE the ForEach bodies, so each
+        // re-ran the full filter/sort/prefix once per row (O(rows × library)); locals make it O(1).
+        let topPlayed = self.topPlayed
+        let topArtists = self.topArtists
+        return VStack(spacing: 0) {
             statsHeader
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
@@ -79,7 +86,7 @@ struct StatisticsView: View {
             Text("Statistiken")
                 .font(.system(size: 22, weight: .bold))
                 .tracking(-0.3)
-                .foregroundStyle(.white)
+                .foregroundStyle(.lumaInk())
             Spacer()
         }
         .padding(.horizontal, 18)
@@ -98,17 +105,17 @@ struct StatisticsView: View {
                     .font(.system(size: 12, weight: .semibold))
                     .tracking(1.5)
             }
-            .foregroundStyle(.white.opacity(0.5))
+            .foregroundStyle(.lumaInk(0.5))
 
             Text(DurationText.hoursMinutes(totalListeningTime))
                 .font(.system(size: 42, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(.lumaInk())
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
 
             Text(CountText.plays(totalPlays))
                 .font(.system(size: 14))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(.lumaInk(0.45))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
@@ -137,7 +144,7 @@ struct StatisticsView: View {
                 Text("\(rank)")
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(rank <= 3 ? .white : Color.white.opacity(0.4))
+                    .foregroundStyle(rank <= 3 ? .lumaInk() : Color.lumaInk(0.4))
                     .frame(width: 24, alignment: .center)
 
                 ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 6, size: 44)
@@ -145,11 +152,11 @@ struct StatisticsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.title)
                         .font(.system(size: 16))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.lumaInk())
                         .lineLimit(1)
                     Text(track.artistName)
                         .font(.system(size: 13))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .foregroundStyle(.lumaInk(0.5))
                         .lineLimit(1)
                 }
 
@@ -157,7 +164,7 @@ struct StatisticsView: View {
 
                 Text("\(track.playCount)×")
                     .font(.system(size: 13, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(.lumaInk(0.4))
             }
             .padding(.horizontal, 18)
             .frame(minHeight: 60)
@@ -172,20 +179,20 @@ struct StatisticsView: View {
                 Text("\(rank)")
                     .font(.system(size: 15, weight: .semibold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(rank <= 3 ? .white : Color.white.opacity(0.4))
+                    .foregroundStyle(rank <= 3 ? .lumaInk() : Color.lumaInk(0.4))
                     .frame(width: 24, alignment: .center)
 
                 ArtworkView(data: artistArtwork(artist), cacheKey: artist.id.uuidString, cornerRadius: 22, size: 44)
 
                 Text(artist.name)
                     .font(.system(size: 16))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.lumaInk())
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(DurationText.hoursMinutes(seconds))
                     .font(.system(size: 13, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(.lumaInk(0.4))
             }
             .padding(.horizontal, 18)
             .frame(minHeight: 60)
@@ -202,7 +209,7 @@ struct StatisticsView: View {
     private func sectionHeader(_ title: LocalizedStringKey) -> some View {
         Text(title)
             .font(.system(size: 20, weight: .bold))
-            .foregroundStyle(.white)
+            .foregroundStyle(.lumaInk())
             .padding(.horizontal, 20)
             .padding(.top, 26)
             .padding(.bottom, 10)
@@ -212,13 +219,13 @@ struct StatisticsView: View {
         VStack(spacing: 14) {
             Image(systemName: "chart.bar.xaxis")
                 .font(.system(size: 44))
-                .foregroundStyle(.white.opacity(0.2))
+                .foregroundStyle(.lumaInk(0.2))
             Text("Noch keine Wiedergaben")
                 .font(.headline)
-                .foregroundStyle(.white.opacity(0.4))
+                .foregroundStyle(.lumaInk(0.4))
             Text("Hör etwas und deine Statistiken erscheinen hier.")
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.25))
+                .foregroundStyle(.lumaInk(0.25))
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -256,17 +263,17 @@ struct StatCard: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(.lumaInk(0.55))
                 .frame(width: 24)
             VStack(alignment: .leading, spacing: 1) {
                 Text(value)
                     .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.lumaInk())
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
                 Text(label)
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .foregroundStyle(.lumaInk(0.45))
             }
             Spacer(minLength: 0)
         }

@@ -12,8 +12,9 @@ struct TrackMetadata {
     var genre: String?
     var year: Int?
     var artworkData: Data?
-    /// Downscaled cover (~1024 px) for inline storage on the Album row; `artworkData` keeps
-    /// the full-resolution original (it goes to ArtworkCache on disk).
+    /// Downscaled cover (~1024 px) stored inline on the Album row — what every surface renders.
+    /// (`artworkData` holds the full-resolution source only transiently during parsing; it is no
+    /// longer persisted separately — that on-disk copy was write-only. See LegacyArtworkCleanup.)
     var artworkThumbnail: Data?
 }
 
@@ -89,8 +90,8 @@ struct MetadataParser {
             }
         }
 
-        // Downscale once here, off the main actor, so the import sites can store a small
-        // thumbnail on the row while the full-res original goes to ArtworkCache.
+        // Downscale once here, off the main actor, so the import sites can store a small (~1024px)
+        // thumbnail inline on the album row (the only persisted copy).
         let artworkThumbnail = artworkData.map { ImageDownscaler.thumbnail(from: $0) }
 
         return TrackMetadata(

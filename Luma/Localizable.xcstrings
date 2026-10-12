@@ -1,7 +1,9 @@
 {
   "sourceLanguage" : "de",
   "strings" : {
-    "" : {},
+    "" : {
+
+    },
     "–" : {
       "localizations" : {
         "en" : {
@@ -62,6 +64,9 @@
         }
       }
     },
+    "%lld %%" : {
+
+    },
     "%lld Alben" : {
       "localizations" : {
         "de" : {
@@ -83,21 +88,9 @@
           }
         },
         "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld album"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld albums"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld albums"
           }
         }
       }
@@ -183,21 +176,9 @@
           }
         },
         "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld song"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld songs"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld songs"
           }
         }
       }
@@ -244,21 +225,9 @@
           }
         },
         "en" : {
-          "variations" : {
-            "plural" : {
-              "one" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld play"
-                }
-              },
-              "other" : {
-                "stringUnit" : {
-                  "state" : "translated",
-                  "value" : "%lld plays"
-                }
-              }
-            }
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld plays"
           }
         }
       }
@@ -272,6 +241,12 @@
           }
         }
       }
+    },
+    "15 Sekunden vor" : {
+
+    },
+    "15 Sekunden zurück" : {
+
     },
     "Abbrechen" : {
       "localizations" : {
@@ -423,6 +398,9 @@
         }
       }
     },
+    "Alle Playlists" : {
+
+    },
     "Alle Titel löschen" : {
       "localizations" : {
         "en" : {
@@ -439,6 +417,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Delete all tracks?"
+          }
+        }
+      }
+    },
+    "Alle wiederholen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repeat All"
           }
         }
       }
@@ -544,6 +532,9 @@
         }
       }
     },
+    "Ansicht" : {
+
+    },
     "App" : {
       "localizations" : {
         "en" : {
@@ -575,6 +566,17 @@
       }
     },
     "Aus Favoriten entfernen" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove from Liked"
+          }
+        }
+      }
+    },
+    "Aus Liked entfernen" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -593,6 +595,28 @@
           }
         }
       }
+    },
+    "Aus Warteschlange entfernen" : {
+
+    },
+    "Ausgabe" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Output"
+          }
+        }
+      }
+    },
+    "Auswahl aus Playlist entfernen" : {
+
+    },
+    "Auswahl liken" : {
+
+    },
+    "Auswahl zur Playlist hinzufügen" : {
+
     },
     "Auswählen" : {
       "localizations" : {
@@ -623,6 +647,9 @@
           }
         }
       }
+    },
+    "Beenden" : {
+
     },
     "Belegter Speicher" : {
       "localizations" : {
@@ -704,6 +731,9 @@
           }
         }
       }
+    },
+    "Darstellung" : {
+
     },
     "Das App-Icon auf dem Home-Bildschirm. iOS zeigt beim Wechsel einmalig einen Hinweis." : {
       "localizations" : {
@@ -795,6 +825,16 @@
         }
       }
     },
+    "Diese Playlist ist noch leer." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This playlist is empty."
+          }
+        }
+      }
+    },
     "Diese Playlists sind bereits vorhanden." : {
       "localizations" : {
         "en" : {
@@ -804,6 +844,15 @@
           }
         }
       }
+    },
+    "Doppelte Titel" : {
+
+    },
+    "Doppelte Titel entfernen" : {
+
+    },
+    "Dunkel" : {
+
     },
     "Einstellungen" : {
       "localizations" : {
@@ -815,7 +864,11 @@
         }
       }
     },
+    "Einstellungen…" : {
+
+    },
     "Ende des Titels" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -864,6 +917,12 @@
           }
         }
       }
+    },
+    "Equalizer…" : {
+
+    },
+    "Erscheinungsbild" : {
+
     },
     "Erstellen" : {
       "localizations" : {
@@ -955,6 +1014,9 @@
         }
       }
     },
+    "Gelikte Songs" : {
+
+    },
     "Genre" : {
       "localizations" : {
         "en" : {
@@ -1026,6 +1088,9 @@
         }
       }
     },
+    "Hell oder dunkel — oder automatisch dem System folgen." : {
+
+    },
     "Höhen" : {
       "localizations" : {
         "en" : {
@@ -1055,6 +1120,9 @@
           }
         }
       }
+    },
+    "Im Album suchen" : {
+
     },
     "Im iCloud-Backup sichern" : {
       "localizations" : {
@@ -1115,6 +1183,9 @@
           }
         }
       }
+    },
+    "In Playlist suchen" : {
+
     },
     "Informationen" : {
       "localizations" : {
@@ -1236,6 +1307,16 @@
         }
       }
     },
+    "Keine Titel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No tracks"
+          }
+        }
+      }
+    },
     "Keine Titel für diese Auswahl" : {
       "localizations" : {
         "en" : {
@@ -1245,6 +1326,9 @@
           }
         }
       }
+    },
+    "Keine Treffer" : {
+
     },
     "Keine Treffer für \"%@\"" : {
       "localizations" : {
@@ -1296,6 +1380,9 @@
           }
         }
       }
+    },
+    "Lautstärke" : {
+
     },
     "Leere Einträge entfernen" : {
       "localizations" : {
@@ -1377,6 +1464,9 @@
         }
       }
     },
+    "Luma öffnen" : {
+
+    },
     "Mediathek" : {
       "localizations" : {
         "en" : {
@@ -1396,6 +1486,9 @@
           }
         }
       }
+    },
+    "Mehrfach importierte Titel zusammenführen" : {
+
     },
     "Meistgespielt" : {
       "localizations" : {
@@ -1568,6 +1661,9 @@
         }
       }
     },
+    "Nichts wird abgespielt" : {
+
+    },
     "Noch keine Titel hier." : {
       "localizations" : {
         "en" : {
@@ -1664,6 +1760,16 @@
         }
       }
     },
+    "Player schließen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close Player"
+          }
+        }
+      }
+    },
     "Playlist" : {
       "localizations" : {
         "en" : {
@@ -1705,6 +1811,7 @@
       }
     },
     "Playlist Name" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -1713,6 +1820,9 @@
           }
         }
       }
+    },
+    "Playlist umbenennen" : {
+
     },
     "Playlist-Titel anzeigen" : {
       "localizations" : {
@@ -1774,6 +1884,9 @@
         }
       }
     },
+    "Reihenfolge ändern" : {
+
+    },
     "Scanne…" : {
       "localizations" : {
         "en" : {
@@ -1824,6 +1937,16 @@
         }
       }
     },
+    "Sleep-Timer, zum Beenden tippen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sleep timer, tap to cancel"
+          }
+        }
+      }
+    },
     "Smart-Playlists" : {
       "localizations" : {
         "en" : {
@@ -1865,11 +1988,22 @@
       }
     },
     "Songs, Künstler oder Alben eingeben." : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enter songs, artists or albums."
+          }
+        }
+      }
+    },
+    "Songs, Künstler, Alben oder Playlists eingeben." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enter songs, artists, albums, or playlists."
           }
         }
       }
@@ -1954,6 +2088,19 @@
         }
       }
     },
+    "Stumm" : {
+
+    },
+    "Suche löschen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear search"
+          }
+        }
+      }
+    },
     "Suche nach Musik" : {
       "localizations" : {
         "en" : {
@@ -1983,6 +2130,9 @@
           }
         }
       }
+    },
+    "System" : {
+
     },
     "Textur" : {
       "localizations" : {
@@ -2045,6 +2195,7 @@
       }
     },
     "Titel speichern" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -2054,12 +2205,33 @@
         }
       }
     },
+    "Titel wiederholen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repeat Track"
+          }
+        }
+      }
+    },
     "Titel, Künstler, Alben" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Title, artist, album"
+          }
+        }
+      }
+    },
+    "Titel, Künstler, Alben, Playlists" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Songs, artists, albums, playlists"
           }
         }
       }
@@ -2083,6 +2255,9 @@
           }
         }
       }
+    },
+    "Ton ein" : {
+
     },
     "Tools" : {
       "localizations" : {
@@ -2194,12 +2369,28 @@
         }
       }
     },
+    "Warteschlange ausblenden" : {
+
+    },
+    "Warteschlange einblenden" : {
+
+    },
     "Warteschlange neu ordnen" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Reorder queue"
+          }
+        }
+      }
+    },
+    "Weitere Optionen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More options"
           }
         }
       }
@@ -2234,6 +2425,16 @@
         }
       }
     },
+    "Wiederholen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repeat"
+          }
+        }
+      }
+    },
     "Wirbel" : {
       "localizations" : {
         "en" : {
@@ -2254,12 +2455,35 @@
         }
       }
     },
+    "Zu Liked hinzufügen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add to Liked"
+          }
+        }
+      }
+    },
     "Zu Playlist hinzufügen" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add to Playlist"
+          }
+        }
+      }
+    },
+    "Zufällig" : {
+
+    },
+    "Zufallswiedergabe" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shuffle"
           }
         }
       }
@@ -2320,7 +2544,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "To Playlist"
+            "value" : "Add to Playlist"
           }
         }
       }
@@ -2334,6 +2558,9 @@
           }
         }
       }
+    },
+    "Zurück zur Mediathek" : {
+
     },
     "Zurücksetzen" : {
       "localizations" : {

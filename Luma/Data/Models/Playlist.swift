@@ -54,26 +54,10 @@ final class Playlist {
         return cfg
     }
 
-    var sortedTracks: [Track] {
-        entries
-            .sorted { $0.order < $1.order }
-            .compactMap { $0.track }
-    }
-
-    var artworkData: Data? {
-        sortedTracks.first { $0.album?.artworkData != nil }?.album?.artworkData
-    }
-
-    var totalDuration: TimeInterval {
-        sortedTracks.reduce(0) { $0 + $1.duration }
-    }
-
-    var formattedDuration: String {
-        let total = Int(totalDuration)
-        let h = total / 3600
-        let m = (total % 3600) / 60
-        return h > 0 ? "\(h) Std \(m) Min" : "\(m) Min"
-    }
+    // NOTE: no `sortedTracks` / `artworkData` / `totalDuration` / `formattedDuration` here. They read
+    // `entry.track` directly, which faults uncatchably on a dangling entry — the whole app instead
+    // resolves entries through the SAFE track→entry inverse (`validEntryTrackMap` / `safeSortedTracks`
+    // in PlaylistsView). Re-add only via that safe path, never `entry.track`.
 
     func containsTrack(_ track: Track) -> Bool {
         // Via the track's own entries (safe) — never touches other entries whose

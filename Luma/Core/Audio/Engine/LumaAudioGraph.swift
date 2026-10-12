@@ -71,6 +71,19 @@ final class LumaAudioGraph {
     /// format). The mixer resamples each input to the output rate, so different-rate tracks
     /// play without a manual converter. Crossfade uses both nodes, each at its track's format.
     func connect(player node: AVAudioPlayerNode, format: AVAudioFormat) {
+        // Skip the disconnect+reconnect when the node is ALREADY wired at an equivalent format.
+        // `engine.connect`/`disconnectNodeOutput` mutate the topology of the RUNNING engine and take
+        // its render-reconfiguration lock; called at the crossfade tail (startCrossfade reconnects the
+        // incoming node) that lock briefly blocked the real-time render thread, so the HAL re-presented
+        // its last buffer a few times — the "the last ~0.5 s repeats ~3×" underrun the user heard while
+        // opening/reordering the queue during a transition. The mixer resamples per input bus, so only
+        // the node's sample rate + channel count must match the scheduled data; for a uniform-rate
+        // library that always holds, so the crossfade now performs ZERO topology mutation. Comparing
+        // the LIVE `outputFormat(forBus:)` keeps this self-correcting across reconfigure/rebuild.
+        let current = node.outputFormat(forBus: 0)
+        if current.sampleRate == format.sampleRate, current.channelCount == format.channelCount {
+            return
+        }
         engine.disconnectNodeOutput(node)
         engine.connect(node, to: mixer, format: format)
     }
@@ -207,12 +220,18 @@ final class LumaAudioGraph {
 
     // MARK: - Configuration-change recovery
 
+    private var configChangeObserver: NSObjectProtocol?
+
     private func observeConfigurationChange() {
-        NotificationCenter.default.addObserver(
+        configChangeObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.handleConfigurationChange() }
         }
+    }
+
+    deinit {
+        if let configChangeObserver { NotificationCenter.default.removeObserver(configChangeObserver) }
     }
 
     private func handleConfigurationChange() {

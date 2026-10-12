@@ -27,7 +27,7 @@ struct AlbumMetadataEditorView: View {
 
                     Text("Änderungen am Albuminterpret verschieben das ganze Album zu diesem Künstler.")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.35))
+                        .foregroundStyle(.lumaInk(0.35))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 8)
                 }
@@ -41,28 +41,41 @@ struct AlbumMetadataEditorView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Abbrechen") { dismiss() }
-                        .foregroundStyle(.white.opacity(0.8))
+                        .foregroundStyle(.lumaInk(0.8))
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Sichern") { save() }
                         .fontWeight(.semibold)
                         .foregroundStyle(Color.lumaAccent)
+                        // An album must keep a title — and an empty one would propagate to every
+                        // member track. Don't let Save persist a blank title.
+                        .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
             .lumaDarkNavBackground()
             .lumaDarkNavScheme()
         }
         .onAppear(perform: load)
+        // Don't let an accidental swipe-down silently throw away entered edits.
+        .interactiveDismissDisabled(isDirty)
+    }
+
+    /// True once any field differs from the album's stored values.
+    private var isDirty: Bool {
+        title != album.title
+            || artist != album.artistName
+            || year != (album.year.map(String.init) ?? "")
+            || genre != (album.genre ?? "")
     }
 
     private func field(_ label: LocalizedStringKey, text: Binding<String>, numeric: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(.lumaInk(0.5))
             TextField("", text: text)
                 .font(.system(size: 16))
-                .foregroundStyle(.white)
+                .foregroundStyle(.lumaInk())
                 .tint(Color.lumaAccent)
                 .modifier(AlbumNumericKeyboard(enabled: numeric))
         }
