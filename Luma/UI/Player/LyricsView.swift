@@ -24,7 +24,7 @@ struct LyricsView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if track != nil {
                 LyricsControls()
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 12)
                     .padding(.top, 6)
                     .padding(.bottom, 10)
             }
@@ -114,7 +114,9 @@ struct LyricsView: View {
 
 /// Compact transport for the lyrics view: elapsed time · previous / play-pause / next · time left,
 /// over a hairline of progress — the mini-player's controls without its cover and title, which
-/// the header above already shows.
+/// the header above already shows. Built to the SAME measures as `MiniPlayer` (48 pt buttons +
+/// 9 pt padding = 66 pt high, 18 pt corners, same icon sizes and progress line), so the two bars
+/// read as one control.
 private struct LyricsControls: View {
     @Environment(AppContainer.self) private var app
 
@@ -124,15 +126,15 @@ private struct LyricsControls: View {
                 LyricsTimeLabel(showsRemaining: false)
                     .frame(width: 56, alignment: .leading)
                 Spacer(minLength: 0)
-                HStack(spacing: 14) {
-                    button("backward.fill", size: 19, label: "Vorheriger Titel") {
+                HStack(spacing: 10) {
+                    button("backward.fill", size: 18, label: "Vorheriger Titel") {
                         Task { await app.queue.playPrevious() }
                     }
-                    button(app.player.showsPlaying ? "pause.fill" : "play.fill", size: 28, weight: .medium,
+                    button(app.player.showsPlaying ? "pause.fill" : "play.fill", size: 26, weight: .medium,
                            label: app.player.showsPlaying ? "Pause" : "Wiedergabe") {
                         app.player.userTogglePlayPause()
                     }
-                    button("forward.fill", size: 19, label: "Nächster Titel") {
+                    button("forward.fill", size: 18, label: "Nächster Titel") {
                         Task { await app.queue.advance() }
                     }
                     .disabled(!app.queue.hasNext)
@@ -142,16 +144,15 @@ private struct LyricsControls: View {
                 LyricsTimeLabel(showsRemaining: true)
                     .frame(width: 56, alignment: .trailing)
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 6)
-            .padding(.bottom, 10)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 9)
 
             LyricsProgressBar()
-                .padding(.horizontal, 20)
-                .padding(.bottom, 6)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 5)
         }
         .frame(maxWidth: .infinity)
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
         .environment(\.colorScheme, .dark)   // sits on the (always dark) cover backdrop
     }
 
@@ -162,7 +163,7 @@ private struct LyricsControls: View {
                 .font(.system(size: size, weight: weight))
                 .foregroundStyle(.white)
                 .contentTransition(.identity)   // no slow symbol morph on play↔pause
-                .frame(width: 48, height: 46)
+                .frame(width: 48, height: 48)
                 .contentShape(Rectangle())
                 .animation(nil, value: icon)
         }
