@@ -74,6 +74,8 @@ final class ImportManager {
         let fileName: String
         let localFileName: String
         let metadata: TrackMetadata
+        /// Lyrics from a `.lrc`/`.txt` file next to the source (only readable for folder imports).
+        let sidecarLyrics: String?
     }
     private enum ParseOutcome: Sendable {
         case parsed(ParsedFile)
@@ -294,8 +296,11 @@ final class ImportManager {
                     url: localURL,
                     fallbackName: url.deletingPathExtension().lastPathComponent
                 )
+                // The lyrics file stays behind in the source folder, so take its text along now —
+                // embedded lyrics need no such step, they travel inside the copied audio file.
                 return .parsed(ParsedFile(sourcePath: sourcePath, fileName: fileName,
-                                          localFileName: localFileName, metadata: metadata))
+                                          localFileName: localFileName, metadata: metadata,
+                                          sidecarLyrics: LyricsReader.sidecarLyrics(for: url)))
             } catch {
                 MediaStorage.delete(filename: localFileName) // roll back the copy
                 // AVFoundation's own message for an unreadable file is just "Operation stopped".
@@ -375,6 +380,8 @@ final class ImportManager {
                 track.setCustomArtwork(cover)
             }
         }
+
+        track.customLyrics = parsed.sidecarLyrics
 
         track.album = album
         track.artist = artist

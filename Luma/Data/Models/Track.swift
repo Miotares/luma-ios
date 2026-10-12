@@ -35,6 +35,11 @@ final class Track {
     /// Optional so the SwiftData migration stays lightweight.
     var loudnessLUFS: Double?
     var loudnessPeakDB: Double?
+    /// Lyrics stored for this track: typed/pasted in the lyrics editor, or picked up from a
+    /// `.lrc`/`.txt` file next to the audio at import. Raw text (LRC timestamps kept). nil for
+    /// most tracks — lyrics embedded in the file's tags are read on demand instead (LyricsReader),
+    /// so they don't bloat the track rows. Takes precedence over the embedded lyrics.
+    var customLyrics: String?
     /// The track's OWN cover — picked in the editor, or embedded in a file that has no album tag
     /// (those all share the catch-all "Unknown Album", so its cover can't speak for them). Most
     /// tracks have none and show their album's cover. External storage keeps the blob out of the

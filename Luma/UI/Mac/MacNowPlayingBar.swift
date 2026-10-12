@@ -13,6 +13,7 @@ struct MacNowPlayingBar: View {
     /// the active toggle (the only stateful one in the pill besides the EQ).
     var isQueueOpen: Bool = false
     @State private var showingEQ = false
+    @State private var showingLyrics = false
 
     var body: some View {
         if let track = app.player.currentTrack {
@@ -82,6 +83,17 @@ struct MacNowPlayingBar: View {
                         .accessibilityLabel("Equalizer")
                         .popover(isPresented: $showingEQ, arrowEdge: .bottom) {
                             EqualizerView().environment(app).frame(width: 380, height: 460)
+                        }
+
+                        Button { showingLyrics.toggle() } label: {
+                            controlIcon("quote.bubble",
+                                        tint: showingLyrics ? Color.lumaAccent : .lumaInk(0.75))
+                        }
+                        .buttonStyle(PressableButtonStyle())
+                        .help("Lyrics")
+                        .accessibilityLabel("Lyrics")
+                        .popover(isPresented: $showingLyrics, arrowEdge: .bottom) {
+                            LyricsView().environment(app).frame(width: 380, height: 520)
                         }
 
                         Button(action: onOpen) {

@@ -17,6 +17,7 @@ struct PlayerView: View {
 
     @State private var palette: ColorPalette?
     @State private var showingQueue = false
+    @State private var showingLyrics = false
     @State private var showNavOptions = false
 
     private var track: Track? { app.player.currentTrack }
@@ -29,6 +30,7 @@ struct PlayerView: View {
             // The tab view's toast host sits UNDER this sheet, so the player shows its own.
             .lumaToastHost(forceDark: true)
             .sheet(isPresented: $showingQueue) { QueueView() }
+            .sheet(isPresented: $showingLyrics) { LyricsView() }
             .confirmationDialog(track?.title ?? "", isPresented: $showNavOptions, titleVisibility: .visible) {
                 if let album = track?.album {
                     Button("Album anzeigen") { openLibraryItem(.album(album)) }
@@ -85,11 +87,12 @@ struct PlayerView: View {
                 }
                 .accessibilityLabel("Player schließen")
                 Spacer()
-                VStack(spacing: 1) {
+                VStack(spacing: 6) {
                     Text("Wird gespielt")
                         .font(.system(size: 12, weight: .semibold))
                         .tracking(0.6)
                         .foregroundStyle(.white.opacity(0.5))
+                    SleepTimerIndicator()
                 }
                 Spacer()
                 Menu {
@@ -162,23 +165,25 @@ struct PlayerView: View {
                     .padding(.top, 24)
                     .padding(.horizontal, 4)
 
-                // Bottom: Queue (left) + Output/AirPlay (right)
-                HStack(alignment: .top) {
+                // Bottom: Queue · Lyrics · Output/AirPlay, in three equal columns. (The sleep-timer
+                // pill moved up under "Wird gespielt" to make room for Lyrics.)
+                HStack(alignment: .top, spacing: 0) {
                     Button { showingQueue = true } label: {
                         bottomControlLabel(icon: "list.bullet", title: "Warteschlange")
                     }
+                    .frame(maxWidth: .infinity)
 
-                    Spacer()
-
-                    SleepTimerIndicator()
-
-                    Spacer()
+                    Button { showingLyrics = true } label: {
+                        bottomControlLabel(icon: "quote.bubble", title: "Lyrics")
+                    }
+                    .frame(maxWidth: .infinity)
 
                     VStack(spacing: 5) {
                         AirPlayRoutePicker()
                             .frame(width: 28, height: 28)
                         OutputDeviceLabel()
                     }
+                    .frame(maxWidth: .infinity)
                 }
                 .padding(.top, 28)
                 .padding(.horizontal, 6)

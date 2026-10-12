@@ -193,6 +193,14 @@ final class LibraryRepository {
         try context.save()
     }
 
+    /// Stores lyrics for a track; empty or nil removes them (the file's embedded lyrics, if any,
+    /// show again).
+    func updateLyrics(_ track: Track, text: String?) throws {
+        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        track.customLyrics = trimmed.isEmpty ? nil : trimmed
+        try context.save()
+    }
+
     /// Sets (or, with nil, removes) a track's own cover. `data` is already downscaled by the caller.
     func updateTrackArtwork(_ track: Track, data: Data?) throws {
         track.setCustomArtwork(data)
@@ -657,6 +665,7 @@ final class LibraryRepository {
                 if let dl = dup.lastPlayedDate, dl > (keeper.lastPlayedDate ?? .distantPast) {
                     keeper.lastPlayedDate = dl
                 }
+                if keeper.customLyrics == nil { keeper.customLyrics = dup.customLyrics }
                 if !keeper.hasCustomArtwork, dup.hasCustomArtwork {
                     keeper.setCustomArtwork(dup.artworkData)
                 }
