@@ -16,6 +16,7 @@ final class AppContainer {
     let libraryFolders: LibraryFolders
     let folderScanner: FolderLibraryScanner
     let review = ReviewPromptManager()
+    let toast = ToastCenter()
     /// Last sorted order of the macOS Songs page, kept here because that page is destroyed on
     /// every sidebar section switch (see `MacLibrarySongsPage`).
     let songOrder = SongOrderCache()
@@ -58,6 +59,9 @@ final class AppContainer {
         lib.seedPlaylistOrderIfNeeded()
         // Backfill denormalized playlist-entry metadata (one-time) so backups/placeholders work.
         lib.backfillEntryMetadataIfNeeded()
+        // Recover real titles for songs that were imported under their container UUID (one-time,
+        // re-reads the affected files in the background).
+        Task { await lib.repairPlaceholderTitlesIfNeeded() }
         // Reclaim disk from the abandoned full-resolution artwork cache (one-time, off-main).
         Task.detached { LegacyArtworkCleanup.purgeIfNeeded() }
 
@@ -102,6 +106,14 @@ final class AppContainer {
 
         AppContainer.shared = self
         restoreLastSession()
+
+        #if DEBUG
+        // Dev/Simulator seeding: launch with LUMA_DEBUG_IMPORT=/host/folder to import that folder's
+        // album subfolders — the Files picker can't be driven from a script.
+        if let path = ProcessInfo.processInfo.environment["LUMA_DEBUG_IMPORT"] {
+            Task { await importManager.debugImportFromPath(path, maxAlbums: .max) }
+        }
+        #endif
     }
 
     /// Triggers a watched-folder rescan (macOS reference library). Never invoked on iOS.

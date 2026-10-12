@@ -540,8 +540,8 @@ struct SmartPlaylistDetailView: View {
                                 .trackRowSeparator()
                                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                                 .trackQueueSwipeTrailing(
-                                    playNext: { app.queue.playNext([track]) },
-                                    addLast: { app.queue.append([track]) }
+                                    playNext: { app.playNext([track]) },
+                                    addLast: { app.addToQueue([track]) }
                                 )
                         }
                     }

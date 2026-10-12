@@ -26,6 +26,8 @@ struct PlayerView: View {
             .background {
                 ArtworkBackground(data: track?.album?.artworkData, palette: palette)
             }
+            // The tab view's toast host sits UNDER this sheet, so the player shows its own.
+            .lumaToastHost(forceDark: true)
             .sheet(isPresented: $showingQueue) { QueueView() }
             .confirmationDialog(track?.title ?? "", isPresented: $showNavOptions, titleVisibility: .visible) {
                 if let album = track?.album {
@@ -215,7 +217,7 @@ struct PlayerView: View {
             Menu {
                 ForEach(playlists) { playlist in
                     Button {
-                        try? app.library.addTracks([track], to: playlist)
+                        app.addToPlaylist([track], playlist)
                     } label: {
                         Label(playlist.name, systemImage: "music.note.list")
                     }

@@ -574,8 +574,8 @@ struct LibrarySongsContent: View {
                             .trackRowSeparator()
                             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                             .trackQueueSwipeTrailing(
-                                playNext: { app.queue.playNext([track]) },
-                                addLast: { app.queue.append([track]) }
+                                playNext: { app.playNext([track]) },
+                                addLast: { app.addToQueue([track]) }
                             )
                     }
                 }
@@ -600,7 +600,10 @@ struct LibrarySongsContent: View {
 /// Lightweight, Sendable snapshot of the columns the Songs sort needs, so the expensive
 /// locale-aware comparison can run OFF the main thread (Track is non-Sendable).
 private struct SongSortKey: Sendable {
-    let id: PersistentIdentifier
+    /// Position in the caller's array — NOT the persistentModelID: a freshly imported track's id
+    /// changes from temporary to permanent when the context saves, and a save landing during the
+    /// off-main sort made every id lookup miss (empty result → the Songs tab spun forever).
+    let index: Int
     let album: String, artist: String, title: String
     let disc: Int, track: Int
     // nonisolated so the comparator can run inside Task.detached (off the main actor).
@@ -620,15 +623,14 @@ private struct SongSortKey: Sendable {
 @MainActor
 func lumaSortSongsAsync(_ tracks: [Track]) async -> [Track] {
     guard !tracks.isEmpty else { return [] }
-    let keys = tracks.map {
-        SongSortKey(id: $0.persistentModelID, album: $0.albumTitle, artist: $0.artistName,
-                    title: $0.title, disc: $0.discNumber, track: $0.trackNumber)
+    let keys = tracks.enumerated().map { index, track in
+        SongSortKey(index: index, album: track.albumTitle, artist: track.artistName,
+                    title: track.title, disc: track.discNumber, track: track.trackNumber)
     }
-    let orderedIDs = await Task.detached(priority: .userInitiated) {
-        keys.sorted(by: SongSortKey.before).map(\.id)
+    let order = await Task.detached(priority: .userInitiated) {
+        keys.sorted(by: SongSortKey.before).map(\.index)
     }.value
-    let byID = Dictionary(tracks.map { ($0.persistentModelID, $0) }, uniquingKeysWith: { a, _ in a })
-    return orderedIDs.compactMap { byID[$0] }
+    return order.map { tracks[$0] }
 }
 
 // MARK: - Helpers
@@ -863,8 +865,8 @@ struct LikedSongsView: View {
                     .trackRowSeparator()
                     .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                     .trackQueueSwipeTrailing(
-                        playNext: { app.queue.playNext([track]) },
-                        addLast: { app.queue.append([track]) }
+                        playNext: { app.playNext([track]) },
+                        addLast: { app.addToQueue([track]) }
                     )
                 }
             }

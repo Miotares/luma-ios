@@ -270,12 +270,12 @@ struct AlbumDetailView: View {
     @ViewBuilder
     private var albumMenu: some View {
         Button {
-            app.queue.playNext(album.sortedTracks)
+            app.playNext(album.sortedTracks)
         } label: {
             Label("Nächster Titel", systemImage: "text.line.first.and.arrowtriangle.forward")
         }
         Button {
-            app.queue.append(album.sortedTracks)
+            app.addToQueue(album.sortedTracks)
         } label: {
             Label("Zuletzt wiedergeben", systemImage: "text.line.last.and.arrowtriangle.forward")
         }
@@ -291,7 +291,7 @@ struct AlbumDetailView: View {
             Menu {
                 ForEach(playlists) { playlist in
                     Button {
-                        try? app.library.addTracks(album.sortedTracks, to: playlist)
+                        app.addToPlaylist(album.sortedTracks, playlist)
                     } label: {
                         Label(playlist.name, systemImage: "music.note.list")
                     }
@@ -540,8 +540,8 @@ struct AlbumDetailView: View {
 
         row.lumaApplyIf(!isSelecting) {
             $0.trackQueueSwipeTrailing(
-                playNext: { app.queue.playNext([track]) },
-                addLast: { app.queue.append([track]) }
+                playNext: { app.playNext([track]) },
+                addLast: { app.addToQueue([track]) }
             )
         }
     }
@@ -608,12 +608,12 @@ struct AlbumDetailView: View {
     }
 
     private func likeSelected() {
-        try? app.library.setLiked(selectedTracks, liked: true)
+        app.like(selectedTracks)
         exitSelection()
     }
 
     private func addSelected(to playlist: Playlist) {
-        try? app.library.addTracks(selectedTracks, to: playlist)
+        app.addToPlaylist(selectedTracks, playlist)
         exitSelection()
     }
 

@@ -190,7 +190,12 @@ final class ImportManager {
             let localFileName = try MediaStorage.importFile(from: url)
             let localURL = MediaStorage.url(for: localFileName)
             do {
-                let metadata = try await MetadataParser().parse(url: localURL)
+                // The copy is named by UUID, so hand the parser the ORIGINAL name for its
+                // title fallback — otherwise an untagged file imports as "4D96906E-…".
+                let metadata = try await MetadataParser().parse(
+                    url: localURL,
+                    fallbackName: url.deletingPathExtension().lastPathComponent
+                )
                 return .parsed(ParsedFile(sourcePath: sourcePath, localFileName: localFileName, metadata: metadata))
             } catch {
                 MediaStorage.delete(filename: localFileName) // roll back the copy

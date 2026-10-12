@@ -2571,6 +2571,106 @@
           }
         }
       }
+    },
+    "Wird als Nächstes gespielt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playing next"
+          }
+        }
+      }
+    },
+    "%lld Titel werden als Nächstes gespielt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tracks playing next"
+          }
+        }
+      }
+    },
+    "Zur Warteschlange hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added to queue"
+          }
+        }
+      }
+    },
+    "%lld Titel zur Warteschlange hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tracks added to queue"
+          }
+        }
+      }
+    },
+    "Hinzufügen fehlgeschlagen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't add"
+          }
+        }
+      }
+    },
+    "Bereits in „%@“" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already in “%@”"
+          }
+        }
+      }
+    },
+    "Zu „%@“ hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added to “%@”"
+          }
+        }
+      }
+    },
+    "%lld Titel zu „%@“ hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld tracks added to “%2$@”"
+          }
+        }
+      }
+    },
+    "Bereits in Liked" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already in Liked"
+          }
+        }
+      }
+    },
+    "%lld Titel zu Liked hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tracks added to Liked"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

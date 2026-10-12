@@ -323,13 +323,13 @@ struct TrackRow: View, Equatable {
     @ViewBuilder
     private func menuContent(_ playlists: [Playlist]) -> some View {
         Button {
-            app.queue.playNext([track])
+            app.playNext([track])
         } label: {
             Label("Nächster Titel", systemImage: "text.line.first.and.arrowtriangle.forward")
         }
 
         Button {
-            app.queue.append([track])
+            app.addToQueue([track])
         } label: {
             Label("Zuletzt wiedergeben", systemImage: "text.line.last.and.arrowtriangle.forward")
         }
@@ -338,7 +338,7 @@ struct TrackRow: View, Equatable {
             Menu {
                 ForEach(playlists) { playlist in
                     Button {
-                        try? app.library.addTracks([track], to: playlist)
+                        app.addToPlaylist([track], playlist)
                     } label: {
                         Label(playlist.name, systemImage: "music.note.list")
                     }

@@ -41,12 +41,12 @@ private struct AlbumContextMenuModifier: ViewModifier {
             FetchDescriptor<Playlist>(sortBy: [SortDescriptor(\.sortIndex)])
         )) ?? []
         Button {
-            app.queue.playNext(album.sortedTracks)
+            app.playNext(album.sortedTracks)
         } label: {
             Label("Nächster Titel", systemImage: "text.line.first.and.arrowtriangle.forward")
         }
         Button {
-            app.queue.append(album.sortedTracks)
+            app.addToQueue(album.sortedTracks)
         } label: {
             Label("Zuletzt wiedergeben", systemImage: "text.line.last.and.arrowtriangle.forward")
         }
@@ -54,7 +54,7 @@ private struct AlbumContextMenuModifier: ViewModifier {
             Menu {
                 ForEach(playlists) { playlist in
                     Button {
-                        try? app.library.addTracks(album.sortedTracks, to: playlist)
+                        app.addToPlaylist(album.sortedTracks, playlist)
                     } label: {
                         Label(playlist.name, systemImage: "music.note.list")
                     }

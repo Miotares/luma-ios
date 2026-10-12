@@ -61,8 +61,8 @@ struct ArtistDetailView: View {
                         // Indented so the tracks read as nested under the album header.
                         .listRowInsets(EdgeInsets(top: 0, leading: 32, bottom: 0, trailing: 16))
                         .trackQueueSwipeTrailing(
-                            playNext: { app.queue.playNext([track]) },
-                            addLast: { app.queue.append([track]) }
+                            playNext: { app.playNext([track]) },
+                            addLast: { app.addToQueue([track]) }
                         )
                     }
                 }
@@ -111,12 +111,12 @@ struct ArtistDetailView: View {
     @ViewBuilder
     private var artistMenu: some View {
         Button {
-            app.queue.playNext(allTracks)
+            app.playNext(allTracks)
         } label: {
             Label("Nächster Titel", systemImage: "text.line.first.and.arrowtriangle.forward")
         }
         Button {
-            app.queue.append(allTracks)
+            app.addToQueue(allTracks)
         } label: {
             Label("Zuletzt wiedergeben", systemImage: "text.line.last.and.arrowtriangle.forward")
         }
@@ -124,7 +124,7 @@ struct ArtistDetailView: View {
             Menu {
                 ForEach(playlists) { playlist in
                     Button {
-                        try? app.library.addTracks(allTracks, to: playlist)
+                        app.addToPlaylist(allTracks, playlist)
                     } label: {
                         Label(playlist.name, systemImage: "music.note.list")
                     }

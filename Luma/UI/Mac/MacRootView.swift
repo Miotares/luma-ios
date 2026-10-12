@@ -255,6 +255,7 @@ struct MacRootView: View {
         // sidebar AND the queue inspector — never drawn over either. Scroll content still clears it
         // via lumaScrollClearance; this overlay reserves no layout space of its own.
         .overlay(alignment: .bottomLeading) { MacPillHost(metrics: metrics) }
+        .lumaToastHost()
         // Queue toggles from the now-playing bar, the ⌥⌘Q shortcut, and per-view header buttons.
         .environment(\.openNowPlaying) { nav.showingQueue.toggle() }
         .inspector(isPresented: $nav.showingQueue) {

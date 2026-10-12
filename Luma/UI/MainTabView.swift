@@ -143,6 +143,7 @@ struct MainTabView: View {
             }
         }
         .tint(Color.lumaAccent)
+        .lumaToastHost()
         .environment(\.openNowPlaying) { showingPlayer = true }
         .sheet(isPresented: $showingPlayer) {
             PlayerView()

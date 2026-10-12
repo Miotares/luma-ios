@@ -79,6 +79,71 @@ final class LibraryRepository {
         UserDefaults.standard.set(true, forKey: Self.didSeedPlaylistOrderKey)
     }
 
+    private static let didRepairUUIDTitlesKey = "didRepairUUIDTitles_v1"
+
+    /// One-time repair for libraries imported before the title fallback was fixed: a file whose
+    /// tags weren't read (every FLAC, and any untagged file) got the UUID of its container copy as
+    /// its title ("4D96906E-…"). Each such track is re-read from its local copy with the fixed
+    /// parser, falling back to the ORIGINAL filename still kept in `filePath` — so the real names
+    /// come back without a re-import. Touches ONLY tracks whose title is literally their own
+    /// container filename; if nothing better can be found the track is left exactly as it is.
+    /// Safe to interrupt: an unfinished pass simply resumes on the next launch.
+    func repairPlaceholderTitlesIfNeeded() async {
+        guard !UserDefaults.standard.bool(forKey: Self.didRepairUUIDTitlesKey) else { return }
+        // Bail WITHOUT marking done so a transient fetch/save failure retries next launch.
+        guard let tracks = try? context.fetch(FetchDescriptor<Track>()) else { return }
+        let affected = tracks.filter { track in
+            guard let local = track.localFileName else { return false }
+            let containerStem = (local as NSString).deletingPathExtension
+            return FilenameMetadata.isPlaceholderName(containerStem)
+                && track.title.caseInsensitiveCompare(containerStem) == .orderedSame
+        }
+
+        var unsaved = 0
+        for track in affected {
+            guard track.modelContext != nil, let local = track.localFileName else { continue }
+            let originalStem = URL(fileURLWithPath: track.filePath).deletingPathExtension().lastPathComponent
+            let fallback = originalStem.isEmpty || FilenameMetadata.isPlaceholderName(originalStem)
+                ? nil : originalStem
+            let metadata = try? await MetadataParser().parse(url: MediaStorage.url(for: local),
+                                                             fallbackName: fallback)
+            // The track may have been deleted while its file was being read.
+            guard track.modelContext != nil, let metadata,
+                  !metadata.title.isEmpty, !FilenameMetadata.isPlaceholderName(metadata.title) else { continue }
+
+            track.title = metadata.title
+            track.artistName = metadata.artistName
+            if metadata.hasAlbumTag { track.albumTitle = metadata.albumTitle }
+            if metadata.trackNumber > 0 { track.trackNumber = metadata.trackNumber }
+            if metadata.discNumber > 0 { track.discNumber = metadata.discNumber }
+            if let year = metadata.year { track.year = year }
+            if let genre = metadata.genre { track.genre = genre }
+            // Don't inherit the catch-all "Unknown Album" cover — it belongs to whichever file
+            // happened to be imported first, not to this track's real album.
+            relinkTrackAlbumAndArtist(track, groupingArtist: metadata.albumArtistName, inheritArtwork: false)
+            if let album = track.album, album.artworkData == nil,
+               let cover = metadata.artworkThumbnail ?? metadata.artworkData {
+                album.artworkData = cover
+            }
+            // Keep the denormalized playlist metadata in step (via the track's own entries — safe).
+            for entry in track.playlistEntries {
+                entry.trackTitle = track.title
+                entry.trackArtist = track.artistName
+                entry.trackAlbum = track.albumTitle
+            }
+            unsaved += 1
+            // Batched so a large library fills in progressively without a save per track.
+            if unsaved >= 50 {
+                do { try context.save() } catch { return }
+                unsaved = 0
+            }
+        }
+        if unsaved > 0 {
+            do { try context.save() } catch { return }
+        }
+        UserDefaults.standard.set(true, forKey: Self.didRepairUUIDTitlesKey)
+    }
+
     func toggleLike(track: Track) throws {
         track.isLiked.toggle()
         // Unlike play/listen stats, a like MUST save explicitly: autosave is off, and the
@@ -92,13 +157,15 @@ final class LibraryRepository {
     /// Sets the like state on many tracks at once (bulk selection). Only tracks whose
     /// state actually changes are touched, and the whole batch is persisted in a single
     /// save — this is an explicit user action, not a per-frame tap, so saving inline is fine.
-    func setLiked(_ tracks: [Track], liked: Bool) throws {
-        var changed = false
+    @discardableResult
+    func setLiked(_ tracks: [Track], liked: Bool) throws -> Int {
+        var changed = 0
         for track in tracks where track.isLiked != liked {
             track.isLiked = liked
-            changed = true
+            changed += 1
         }
-        if changed { try context.save() }
+        if changed > 0 { try context.save() }
+        return changed
     }
 
     func updateTrack(
@@ -186,7 +253,9 @@ final class LibraryRepository {
         try context.save()
     }
 
-    func addTracks(_ tracks: [Track], to playlist: Playlist) throws {
+    /// Returns how many of `tracks` were actually added (tracks already in the playlist are skipped).
+    @discardableResult
+    func addTracks(_ tracks: [Track], to playlist: Playlist) throws -> Int {
         // Index this playlist's unresolved placeholder entries by their match key (via the SAFE
         // inverse — never reading entry.track, which can fault on a dangling entry). Manually adding
         // a song that already exists as a placeholder LINKS the placeholder instead of inserting a
@@ -197,8 +266,10 @@ final class LibraryRepository {
         for e in playlist.entries where !validIDs.contains(e.persistentModelID) && !e.trackTitle.isEmpty {
             placeholderByKey[matchKey(e.trackTitle, e.trackArtist, e.trackAlbum)] = e
         }
+        var added = 0
         for track in tracks {
             guard !playlist.containsTrack(track) else { continue }
+            added += 1
             let key = matchKey(track.title, track.artistName, track.albumTitle)
             if let placeholder = placeholderByKey.removeValue(forKey: key) {
                 placeholder.track = track
@@ -210,6 +281,7 @@ final class LibraryRepository {
             context.insert(entry)
         }
         try context.save()
+        return added
     }
 
     func removeEntry(_ entry: PlaylistEntry, from playlist: Playlist) throws {
@@ -586,18 +658,25 @@ final class LibraryRepository {
     /// the display strings while the track stayed grouped under — and showed the artwork of — its old
     /// album/artist. Find-or-creates the targets (same (title, artist) identity as import), moves the
     /// track, inherits artwork for a brand-new album, and deletes an old album/artist left empty.
-    private func relinkTrackAlbumAndArtist(_ track: Track) {
+    ///
+    /// `groupingArtist` is the album artist when it differs from the track artist (import groups
+    /// albums by album artist, so featured tracks stay in one album). `inheritArtwork` false keeps
+    /// a new album from adopting the old album's cover.
+    private func relinkTrackAlbumAndArtist(_ track: Track, groupingArtist: String? = nil,
+                                           inheritArtwork: Bool = true) {
         let oldAlbum = track.album
         let oldArtist = track.artist
-        let targetArtist = findOrCreateArtist(named: track.artistName)
-        let targetAlbum = findOrCreateAlbum(title: track.albumTitle, artistName: track.artistName,
+        let trimmedGrouping = groupingArtist?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let artistName = trimmedGrouping.isEmpty ? track.artistName : trimmedGrouping
+        let targetArtist = findOrCreateArtist(named: artistName)
+        let targetAlbum = findOrCreateAlbum(title: track.albumTitle, artistName: artistName,
                                             artist: targetArtist, year: track.year, genre: track.genre)
 
         // Album first: deleting an emptied old album also prunes it from the old artist's `albums`,
         // so the artist-emptiness check below sees the up-to-date state.
         if oldAlbum?.id != targetAlbum.id {
             oldAlbum?.tracks.removeAll { $0.id == track.id }
-            if targetAlbum.artworkData == nil { targetAlbum.artworkData = oldAlbum?.artworkData }
+            if inheritArtwork, targetAlbum.artworkData == nil { targetAlbum.artworkData = oldAlbum?.artworkData }
             track.album = targetAlbum
             targetAlbum.tracks.append(track)
             if let old = oldAlbum, old.tracks.isEmpty { deleteAlbum(old) }
