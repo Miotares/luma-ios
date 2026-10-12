@@ -1,6 +1,12 @@
 import AVFoundation
 import Foundation
 
+/// User setting for the lyrics feature.
+nonisolated enum LyricsSettings {
+    /// Whether the Lyrics button is offered in the player (default on).
+    static let enabledKey = "lyricsEnabled"
+}
+
 /// Lyrics text as shown in the app. Lyrics often come in LRC form — every line prefixed with a
 /// `[mm:ss.xx]` timestamp — so the raw text is parsed into lines with optional times. V1 shows
 /// the plain lines; the times are kept so synced display can be added without re-reading anything.

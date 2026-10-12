@@ -6,10 +6,17 @@ import SwiftData
 /// player applies, so a quiet file and a loud one play back equally loud.
 ///
 /// Measuring needs a full decode, so it never happens on the import or playback path. Tracks are
-/// analyzed in the background — one at a time, low priority — and the result is stored on the
-/// Track. Whatever is about to play jumps the line (`prioritize`), and a track that starts before
-/// its full measurement exists gets a quick estimate from its first seconds (`quickEstimate`),
-/// refined when the real value lands (`onResult`).
+/// analyzed in the background — one at a time, low priority. Whatever is about to play jumps the
+/// line (`prioritize`), and a track that starts before its full measurement exists gets a quick
+/// estimate from its first seconds (`quickEstimate`), refined when the real value lands (`onResult`).
+///
+/// PERFORMANCE RULE: nothing here touches a Track model while the analysis runs. Setting a property
+/// on a main-context model — even without saving — makes every live `@Query` re-fetch, and doing
+/// that once per measured track froze the UI for a moment about once a second for the whole first
+/// pass over a library. Results therefore live in memory (`measured`, which is what playback reads)
+/// and are written to the store in ONE go: when a pass over the library is finished, together
+/// with the save on pause / leaving the foreground, or after a large batch. A result lost to a
+/// kill is simply measured again.
 @Observable
 final class LoudnessService {
     static let enabledKey = "normalizeVolume"
@@ -43,12 +50,20 @@ final class LoudnessService {
     private var measured: [UUID: LoudnessMeasurement] = [:]
     /// Quick estimates — in memory only, replaced by the full measurement.
     private var estimates: [UUID: LoudnessMeasurement] = [:]
-    private var backlog: [UUID] = []
-    private var urgent: [UUID] = []
+    /// What the worker needs to measure a track without going back to the store.
+    nonisolated private struct Job: Sendable {
+        let id: UUID
+        let url: URL
+    }
+    private var backlog: [Job] = []
+    private var urgent: [Job] = []
     private var queued: Set<UUID> = []
     private var worker: Task<Void, Never>?
-    private var unsaved = 0
-    private let saveInterval = 25
+    /// Measurements not yet written to the store (see the performance rule above).
+    private var unflushed: [UUID: LoudnessMeasurement] = [:]
+    /// Safety net for a very long pass: write after this many results even while in the foreground.
+    private let flushThreshold = 500
+    private let minimumOwnFlush = 50
 
     init(context: ModelContext) {
         self.context = context
@@ -87,6 +102,11 @@ final class LoudnessService {
     }
 
     private func lookup(_ track: Track) -> LoudnessMeasurement? {
+        lookupMeasured(track) ?? estimates[track.id]
+    }
+
+    /// The FULL measurement, from memory or (first use) from the stored value.
+    private func lookupMeasured(_ track: Track) -> LoudnessMeasurement? {
         let id = track.id
         if let known = measured[id] { return known }
         if let lufs = track.loudnessLUFS {
@@ -94,7 +114,7 @@ final class LoudnessService {
             measured[id] = value
             return value
         }
-        return estimates[id]
+        return nil
     }
 
     /// Whether `track` already has a full measurement or an estimate to play with.
@@ -116,27 +136,43 @@ final class LoudnessService {
     /// Moves these tracks to the front of the queue (the current track and what follows it).
     func prioritize(_ tracks: [Track]) {
         guard isEnabled else { return }
-        let ids = tracks.filter { measured[$0.id] == nil && $0.loudnessLUFS == nil }.map(\.id)
-        guard !ids.isEmpty else { return }
-        urgent.removeAll { ids.contains($0) }
-        backlog.removeAll { ids.contains($0) }
-        urgent.insert(contentsOf: ids, at: 0)
+        let jobs = tracks.compactMap { track -> Job? in
+            guard lookupMeasured(track) == nil, let url = try? track.resolveURL() else { return nil }
+            return Job(id: track.id, url: url)
+        }
+        guard !jobs.isEmpty else { return }
+        let ids = Set(jobs.map(\.id))
+        urgent.removeAll { ids.contains($0.id) }
+        backlog.removeAll { ids.contains($0.id) }
+        urgent.insert(contentsOf: jobs, at: 0)
         for id in ids where queued.insert(id).inserted { remaining += 1 }
         startWorkerIfNeeded()
     }
 
     /// Queues every track that has no measurement yet (launch, after an import, after a rescan).
+    /// The list is read on a throwaway background context, so even a whole library costs the main
+    /// thread nothing.
     func enqueueMissing() {
         guard isEnabled else { return }
-        var descriptor = FetchDescriptor<Track>(predicate: #Predicate { $0.loudnessLUFS == nil })
-        descriptor.propertiesToFetch = [\.id]
-        guard let missing = try? context.fetch(descriptor) else { return }
-        for track in missing {
-            let id = track.id
-            if queued.insert(id).inserted {
-                backlog.append(id)
-                remaining += 1
-            }
+        let container = context.container
+        Task { [weak self] in
+            let jobs = await Task.detached(priority: .utility) { () -> [Job] in
+                let reader = ModelContext(container)
+                let descriptor = FetchDescriptor<Track>(predicate: #Predicate { $0.loudnessLUFS == nil })
+                let tracks = (try? reader.fetch(descriptor)) ?? []
+                return tracks.compactMap { track in
+                    (try? track.resolveURL()).map { Job(id: track.id, url: $0) }
+                }
+            }.value
+            self?.enqueue(jobs)
+        }
+    }
+
+    private func enqueue(_ jobs: [Job]) {
+        guard isEnabled else { return }
+        for job in jobs where measured[job.id] == nil && queued.insert(job.id).inserted {
+            backlog.append(job)
+            remaining += 1
         }
         startWorkerIfNeeded()
     }
@@ -152,7 +188,7 @@ final class LoudnessService {
             urgent.removeAll()
             queued.removeAll()
             remaining = 0
-            saveIfNeeded(force: true)
+            flush()
         }
     }
 
@@ -168,67 +204,78 @@ final class LoudnessService {
 
     private func drain() async {
         while !Task.isCancelled {
-            let id: UUID
+            let job: Job
             if !urgent.isEmpty {
-                id = urgent.removeFirst()
+                job = urgent.removeFirst()
             } else if !backlog.isEmpty {
                 // The backlog is housekeeping — don't burn battery or heat for it. What's about
                 // to play (`urgent`) is still measured.
                 if Self.shouldDeferBacklog {
-                    saveIfNeeded(force: true)
                     try? await Task.sleep(for: .seconds(30))
                     continue
                 }
-                id = backlog.removeFirst()
+                job = backlog.removeFirst()
             } else {
                 break
             }
-            await analyze(id)
-            queued.remove(id)
+            await analyze(job)
+            queued.remove(job.id)
             remaining = max(0, remaining - 1)
+            if unflushed.count >= flushThreshold { flush() }
         }
-        saveIfNeeded(force: true)
+        // The pass is done (or was cancelled): one write for what it found. A handful of results
+        // (the few tracks around the one that is playing) isn't worth a refresh of its own — they
+        // go out with the next save the app does anyway (pause, leaving the foreground).
+        if unflushed.count >= minimumOwnFlush { flush() }
     }
 
-    private func analyze(_ id: UUID) async {
-        var descriptor = FetchDescriptor<Track>(predicate: #Predicate { $0.id == id })
-        descriptor.fetchLimit = 1
-        guard let track = try? context.fetch(descriptor).first, track.loudnessLUFS == nil,
-              let url = try? track.resolveURL() else { return }
+    private func analyze(_ job: Job) async {
+        guard measured[job.id] == nil else { return }
+        let url = job.url
         // Legacy bookmark-based tracks need their security scope for the read.
         let scoped = url.startAccessingSecurityScopedResource()
         let result = await Task.detached(priority: .utility) {
             await LoudnessMeter.measure(url: url)
         }.value
         if scoped { url.stopAccessingSecurityScopedResource() }
-        // Deleted while its file was being read, or the read was cancelled.
-        guard !Task.isCancelled, track.modelContext != nil else { return }
+        guard !Task.isCancelled else { return }
 
+        let value: LoudnessMeasurement
         if let result {
-            measured[id] = result
-            estimates[id] = nil
-            track.loudnessLUFS = result.lufs
-            track.loudnessPeakDB = result.peakDB
+            value = result
         } else if FileManager.default.fileExists(atPath: url.path) {
             // Readable but silent / undecodable: remember that, so it isn't retried every launch.
             // A file that is merely missing right now stays unmeasured and is retried later.
-            measured[id] = LoudnessMeasurement(lufs: Self.unmeasurable, peakDB: 0)
-            track.loudnessLUFS = Self.unmeasurable
-            track.loudnessPeakDB = 0
+            value = LoudnessMeasurement(lufs: Self.unmeasurable, peakDB: 0)
         } else {
             return
         }
-        unsaved += 1
-        saveIfNeeded(force: false)
-        onResult?(id)
+        measured[job.id] = value
+        estimates[job.id] = nil
+        unflushed[job.id] = value
+        onResult?(job.id)
     }
 
-    /// Autosave is off on the main context and every save republishes all live queries, so results
-    /// are written in batches rather than one save per track.
-    private func saveIfNeeded(force: Bool) {
-        guard unsaved > 0, force || unsaved >= saveInterval else { return }
-        try? context.save()
-        unsaved = 0
+    /// Writes the measurements collected so far onto their tracks. Deliberately rare (see the
+    /// performance rule at the top) and WITHOUT its own save when called ahead of one: the caller
+    /// that is about to save anyway (leaving the foreground) passes `save: false`.
+    func flush(save: Bool = true) {
+        guard !unflushed.isEmpty else { return }
+        let pending = unflushed
+        unflushed.removeAll()
+        let ids = Array(pending.keys)
+        // A track deleted in the meantime simply isn't in the result.
+        let descriptor = FetchDescriptor<Track>(predicate: #Predicate { ids.contains($0.id) })
+        guard let tracks = try? context.fetch(descriptor) else {
+            unflushed = pending   // keep them for the next attempt
+            return
+        }
+        for track in tracks {
+            guard let value = pending[track.id] else { continue }
+            track.loudnessLUFS = value.lufs
+            track.loudnessPeakDB = value.peakDB
+        }
+        if save { try? context.save() }
     }
 
     private static var shouldDeferBacklog: Bool {

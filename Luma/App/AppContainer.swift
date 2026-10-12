@@ -106,9 +106,13 @@ final class AppContainer {
             lib.addListenTime(to: track, seconds: seconds)
         }
 
-        // The player coalesces stat writes (recordPlay/addListenTime mutate without saving);
-        // it asks us to persist them at safe boundaries (pause/stop), not on every tick.
-        p.onStatsShouldPersist = { lib.saveStats() }
+        // The repository only BUFFERS play counts / listen time while music plays (see
+        // LibraryRepository.recordPlay); the player asks us to write them at a quiet boundary
+        // (pause / stop). Loudness measurements collected meanwhile ride along in the same save.
+        p.onStatsShouldPersist = { [weak self] in
+            self?.loudness.flush(save: false)
+            lib.saveStats()
+        }
 
         // Persist the queue/playhead on every track change. (No palette extraction here — PlayerView
         // derives its own palette via PaletteExtractor; the old AppContainer.currentPalette was
@@ -158,6 +162,9 @@ final class AppContainer {
     /// background or kill keeps the stats without saving on every playback tick.
     func saveStats() {
         player.flushPendingListen()
+        // Loudness measurements collected in memory ride along with this save — the app is leaving
+        // the foreground, so the query refresh a write causes isn't visible.
+        loudness.flush(save: false)
         library.saveStats()
     }
 

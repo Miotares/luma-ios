@@ -96,30 +96,16 @@ extension View {
     /// iOS only: on macOS swipe is a hidden trackpad gesture, so these same two actions are
     /// reached through the row's right-click context menu (TrackRow's "Nächster Titel" /
     /// "Zuletzt wiedergeben"). This becomes a no-op on macOS.
+    ///
+    /// A FULL swipe runs the first action directly, a short swipe reveals both. Which of the two
+    /// comes first is the user's choice (Settings ▸ Wiedergabe ▸ Wischgeste).
     @ViewBuilder
     func trackQueueSwipeTrailing(
         playNext: @escaping () -> Void,
         addLast: @escaping () -> Void
     ) -> some View {
         #if os(iOS) || os(visionOS)
-        self.swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button {
-                queueActionHaptic()
-                playNext()
-            } label: {
-                Label("Nächster", systemImage: "text.line.first.and.arrowtriangle.forward")
-            }
-            // Readable blue — the app accent is white, which made this white-on-white.
-            .tint(Color(red: 0.20, green: 0.48, blue: 0.95))
-
-            Button {
-                queueActionHaptic()
-                addLast()
-            } label: {
-                Label("Ans Ende", systemImage: "text.line.last.and.arrowtriangle.forward")
-            }
-            .tint(Color(red: 0.20, green: 0.65, blue: 0.35))
-        }
+        modifier(QueueSwipeModifier(playNext: playNext, addLast: addLast))
         #else
         self
         #endif
@@ -143,3 +129,51 @@ extension View {
         #endif
     }
 }
+
+/// User setting for the queue swipe on track rows.
+enum QueueSwipeSettings {
+    /// false (default): a full swipe plays the track NEXT; true: it adds the track to the END.
+    static let fullSwipeAddsLastKey = "swipeFullSwipeAddsLast"
+}
+
+#if os(iOS) || os(visionOS)
+private struct QueueSwipeModifier: ViewModifier {
+    @AppStorage(QueueSwipeSettings.fullSwipeAddsLastKey) private var fullSwipeAddsLast = false
+    let playNext: () -> Void
+    let addLast: () -> Void
+
+    func body(content: Content) -> some View {
+        content.swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            // The FIRST button is the one a full swipe triggers.
+            if fullSwipeAddsLast {
+                lastButton
+                nextButton
+            } else {
+                nextButton
+                lastButton
+            }
+        }
+    }
+
+    private var nextButton: some View {
+        Button {
+            queueActionHaptic()
+            playNext()
+        } label: {
+            Label("Nächster", systemImage: "text.line.first.and.arrowtriangle.forward")
+        }
+        // Readable blue — the app accent is white, which made this white-on-white.
+        .tint(Color(red: 0.20, green: 0.48, blue: 0.95))
+    }
+
+    private var lastButton: some View {
+        Button {
+            queueActionHaptic()
+            addLast()
+        } label: {
+            Label("Ans Ende", systemImage: "text.line.last.and.arrowtriangle.forward")
+        }
+        .tint(Color(red: 0.20, green: 0.65, blue: 0.35))
+    }
+}
+#endif

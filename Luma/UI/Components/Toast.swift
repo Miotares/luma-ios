@@ -15,12 +15,23 @@ final class ToastCenter {
     private(set) var current: Toast?
     private var dismissTask: Task<Void, Never>?
 
+    /// How long a toast stays. DEBUG builds can stretch it (LUMA_DEBUG_TOAST_SECONDS) so a
+    /// screenshot-driven check has time to catch it.
+    private static let visibleSeconds: Double = {
+        #if DEBUG
+        if let raw = ProcessInfo.processInfo.environment["LUMA_DEBUG_TOAST_SECONDS"], let seconds = Double(raw) {
+            return seconds
+        }
+        #endif
+        return 1.8
+    }()
+
     func show(_ message: String, systemImage: String = "checkmark") {
         dismissTask?.cancel()
         current = Toast(message: message, systemImage: systemImage)
         AccessibilityNotification.Announcement(message).post()
         dismissTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.8))
+            try? await Task.sleep(for: .seconds(Self.visibleSeconds))
             guard !Task.isCancelled else { return }
             self?.current = nil
         }
@@ -31,14 +42,24 @@ extension View {
     /// Shows the app's toasts over this view. Attach to every presentation ROOT that can trigger
     /// one — an overlay on the tab view sits UNDER a sheet, so the player sheet hosts its own.
     /// `forceDark` is for surfaces that are dark regardless of the app appearance (the player).
-    func lumaToastHost(forceDark: Bool = false) -> some View {
-        modifier(ToastHost(forceDark: forceDark))
+    /// `top` is the distance from this view's top to the toast: the default puts it exactly level
+    /// with the floating back / options buttons of the detail screens (36 pt circles, 18 pt down),
+    /// so it sits between them like a title; a host with its own header passes that header's inset.
+    func lumaToastHost(forceDark: Bool = false, top: CGFloat = LumaToastMetrics.defaultTop) -> some View {
+        modifier(ToastHost(forceDark: forceDark, top: top))
     }
+}
+
+enum LumaToastMetrics {
+    /// Matches the floating header buttons (`LumaBackButton`, the "…" menu): same height, same inset.
+    static let height: CGFloat = 36
+    static let defaultTop: CGFloat = 18
 }
 
 private struct ToastHost: ViewModifier {
     @Environment(AppContainer.self) private var app
     let forceDark: Bool
+    let top: CGFloat
 
     private var showsImportProgress: Bool {
         app.importManager.isImporting && !app.importManager.isPresentingUI
@@ -58,8 +79,9 @@ private struct ToastHost: ViewModifier {
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
-            .padding(.top, 2)
-            .padding(.horizontal, 24)
+            .padding(.top, top)
+            // Leave the two 36 pt buttons (18 pt from the edges) and a gap clear on both sides.
+            .padding(.horizontal, 62)
             .animation(.smooth(duration: 0.28), value: app.toast.current)
             .animation(.smooth(duration: 0.28), value: showsImportProgress)
             // Purely informational — never swallow a tap meant for the header underneath.
@@ -77,13 +99,13 @@ private struct ToastCapsule: View {
             Image(systemName: toast.systemImage)
                 .font(.system(size: 13, weight: .semibold))
             Text(toast.message)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
         .foregroundStyle(forceDark ? Color.white : Color.lumaInk())
-        .padding(.horizontal, 16)
-        .frame(height: 40)
+        .padding(.horizontal, 14)
+        .frame(height: LumaToastMetrics.height)
         .glassEffect(.regular, in: .capsule)
         .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
         .accessibilityHidden(true)   // already announced by ToastCenter.show
@@ -103,13 +125,13 @@ private struct ImportProgressCapsule: View {
             Text(manager.isScanning || manager.totalCount == 0
                  ? String(localized: "Import wird vorbereitet …")
                  : String(localized: "Importiere \(manager.importedCount) / \(manager.totalCount)"))
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .monospacedDigit()
                 .lineLimit(1)
         }
         .foregroundStyle(forceDark ? Color.white : Color.lumaInk())
-        .padding(.horizontal, 16)
-        .frame(height: 40)
+        .padding(.horizontal, 14)
+        .frame(height: LumaToastMetrics.height)
         .glassEffect(.regular, in: .capsule)
         .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
     }

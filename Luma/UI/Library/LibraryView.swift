@@ -61,8 +61,8 @@ struct LibraryView: View {
     }()
 
     #if !os(macOS)
-    @Query(sort: \Album.title)                        private var allAlbums: [Album]
-    @Query(artistsRowDescriptor(prefetchTracks: true)) private var allArtists: [Artist]
+    @Query(albumsRowDescriptor())                     private var allAlbums: [Album]
+    @Query(artistsRowDescriptor())                    private var allArtists: [Artist]
     @Query(tracksRowDescriptor(sortByTitle: true))    private var allTracks: [Track]
     @Query(LibraryView.recentTracksDescriptor)        private var recentTracks: [Track]
     @Query(sort: \Playlist.sortIndex)                 private var allPlaylists: [Playlist]
@@ -227,7 +227,7 @@ struct LibraryView: View {
 
 #if os(macOS)
 private struct MacLibraryAlbumsPage: View {
-    @Query(sort: \Album.title)                 private var albums: [Album]
+    @Query(albumsRowDescriptor())              private var albums: [Album]
     @Query(LibraryView.recentTracksDescriptor) private var recentTracks: [Track]
     @Query(sort: \Playlist.sortIndex)          private var playlists: [Playlist]
     /// Only the tracks that sit in a playlist — enough to resolve the pinned playlists' covers.

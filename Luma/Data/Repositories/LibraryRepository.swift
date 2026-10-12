@@ -17,29 +17,58 @@ final class LibraryRepository {
 
     // MARK: - Track Updates
 
+    /// Play counts / listen time collected while music plays, keyed by track id, not yet on the
+    /// models.
+    ///
+    /// WHY BUFFERED: changing a property of a main-context Track — even without saving — makes
+    /// every live `@Query` re-fetch. With a ~2000-track library that froze the UI for up to a second
+    /// (measured: 600 ms for the track list, 180 ms albums, 220 ms artists) at EVERY track change
+    /// and every counted play, because the player reports listen time and plays exactly then. So
+    /// the numbers wait here and reach the models in one step at a quiet boundary — pause, stop,
+    /// leaving the foreground (`saveStats`). The price: "recently / most played" lists catch up at
+    /// that boundary instead of mid-song. Durability is unchanged — these writes were never saved
+    /// before that boundary either.
+    private struct PendingStats {
+        var plays = 0
+        var listenSeconds: TimeInterval = 0
+        var lastPlayed: Date?
+    }
+    private var pendingStats: [UUID: PendingStats] = [:]
+
     func recordPlay(track: Track) throws {
-        track.playCount += 1
-        track.lastPlayedDate = Date()
-        // NO save here. The main context has autosave DISABLED (see AppContainer), so these
-        // high-frequency playback-stat writes stay pending in memory and are flushed together
-        // by `saveStats()` at a lifecycle boundary (pause/stop/background). Saving per-play
-        // republished every live @Query mid-playback — the invalidation storm that made the
-        // library mushy while scrolling and kept the phone busy during background playback.
-        // Pending changes are still visible to same-context fetches, so smart playlists update.
+        pendingStats[track.id, default: PendingStats()].plays += 1
+        pendingStats[track.id]?.lastPlayed = Date()
     }
 
     /// Adds actually-listened seconds to a track (the player accumulates in memory and flushes
     /// at track boundaries / pause / background, so partial/skipped plays still count).
     func addListenTime(to track: Track, seconds: TimeInterval) {
         guard seconds > 0 else { return }
-        track.listenSeconds += seconds
-        // NO save here — coalesced into `saveStats()` at a lifecycle boundary. See recordPlay.
+        pendingStats[track.id, default: PendingStats()].listenSeconds += seconds
+    }
+
+    /// Moves the buffered stats onto their tracks (no save). A track deleted meanwhile is skipped.
+    private func applyPendingStats() {
+        guard !pendingStats.isEmpty else { return }
+        let pending = pendingStats
+        let ids = Array(pending.keys)
+        guard let tracks = try? context.fetch(
+            FetchDescriptor<Track>(predicate: #Predicate { ids.contains($0.id) })
+        ) else { return }   // keep the buffer for the next attempt
+        pendingStats.removeAll()
+        for track in tracks {
+            guard let stats = pending[track.id] else { continue }
+            track.playCount += stats.plays
+            track.listenSeconds += stats.listenSeconds
+            if let played = stats.lastPlayed { track.lastPlayedDate = played }
+        }
     }
 
     /// Persists any pending in-memory mutations (playback stats accumulated during playback).
     /// Called when leaving the foreground / on pause / stop so a background or kill keeps the
     /// stats, WITHOUT saving on every play/listen tick (which republishes every live @Query).
     func saveStats() {
+        applyPendingStats()
         guard context.hasChanges else { return }
         try? context.save()
     }
@@ -244,15 +273,18 @@ final class LibraryRepository {
 
     // MARK: - Stats
 
-    func libraryStats() throws -> LibraryStats {
-        let tracks = try context.fetch(FetchDescriptor<Track>())
-        let albums = try context.fetch(FetchDescriptor<Album>())
-        let artists = try context.fetch(FetchDescriptor<Artist>())
-        let totalDuration = tracks.reduce(0.0) { $0 + $1.duration }
+    /// Library totals for the Settings screen. Counts are SQL `COUNT`s and the duration reads one
+    /// column — never whole rows: an Album row carries its cover inline (≈200 KB each), so fetching
+    /// the album table just to count it read ~20 MB.
+    func libraryStats() -> LibraryStats {
+        var durations = FetchDescriptor<Track>()
+        durations.propertiesToFetch = [\.duration]
+        let totalDuration = ((try? context.fetch(durations)) ?? []).reduce(0.0) { $0 + $1.duration }
         return LibraryStats(
-            trackCount: tracks.count,
-            albumCount: albums.count,
-            artistCount: artists.count,
+            trackCount: (try? context.fetchCount(FetchDescriptor<Track>())) ?? 0,
+            albumCount: (try? context.fetchCount(FetchDescriptor<Album>())) ?? 0,
+            artistCount: (try? context.fetchCount(FetchDescriptor<Artist>())) ?? 0,
+            playlistCount: (try? context.fetchCount(FetchDescriptor<Playlist>())) ?? 0,
             totalDuration: totalDuration
         )
     }
@@ -631,6 +663,7 @@ final class LibraryRepository {
     /// files) are deleted via `delete(track:)`. Saves once at the end.
     @discardableResult
     func removeDuplicateTracks() throws -> DuplicateRemoval {
+        applyPendingStats()   // merge with the real counts, not the ones before this session
         let all = try context.fetch(FetchDescriptor<Track>())
         func norm(_ s: String) -> String {
             s.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
@@ -756,10 +789,11 @@ final class LibraryRepository {
 }
 
 struct LibraryStats {
-    let trackCount: Int
-    let albumCount: Int
-    let artistCount: Int
-    let totalDuration: TimeInterval
+    var trackCount = 0
+    var albumCount = 0
+    var artistCount = 0
+    var playlistCount = 0
+    var totalDuration: TimeInterval = 0
 
     var formattedDuration: String {
         let hours = Int(totalDuration) / 3600

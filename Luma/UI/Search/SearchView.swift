@@ -6,7 +6,7 @@ struct SearchView: View {
     @State private var query = ""
     // Prefetch `album` so the result TrackRows don't fault it per-row on the main thread.
     @Query(tracksRowDescriptor(sortByTitle: true, prefetchEntries: false)) private var allTracks: [Track]
-    @Query(sort: \Album.title)  private var allAlbums: [Album]
+    @Query(albumsRowDescriptor()) private var allAlbums: [Album]
     @Query(artistsRowDescriptor()) private var allArtists: [Artist]
     @Query(sort: \Playlist.sortIndex) private var allPlaylists: [Playlist]
 

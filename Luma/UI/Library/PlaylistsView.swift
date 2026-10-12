@@ -33,6 +33,19 @@ func tracksRowDescriptor(sortByTitle: Bool = false, prefetchEntries: Bool = true
     return d
 }
 
+/// All albums for LIST surfaces (grid, search, pickers), WITHOUT their cover bytes.
+///
+/// `Album.artworkData` is declared `.externalStorage`, but Core Data keeps a blob in the row unless
+/// it is large — in a real 119-album library 109 covers (21 MB) sat INSIDE the album table, so a
+/// plain `@Query<Album>` read all of them on every fetch and on every refresh after a save
+/// (140–180 ms each, per query). Listing only the scalar columns leaves the cover to be faulted
+/// in per album, when ArtworkView actually needs it.
+func albumsRowDescriptor() -> FetchDescriptor<Album> {
+    var d = FetchDescriptor<Album>(sortBy: [SortDescriptor(\.title)])
+    d.propertiesToFetch = [\.id, \.title, \.artistName, \.year, \.genre, \.artworkVersion]
+    return d
+}
+
 /// Only the tracks that sit in at least one playlist, with the two relationships the playlist
 /// surfaces walk prefetched. This is what `validEntryTrackMap` actually needs: a track without
 /// entries contributes nothing to the map. Feeding the map from the WHOLE table instead cost a

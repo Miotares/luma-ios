@@ -3012,6 +3012,56 @@
           }
         }
       }
+    },
+    "Lyrics anzeigen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show lyrics"
+          }
+        }
+      }
+    },
+    "Zeigt im Player den Lyrics-Button. Ausgeschaltet bleibt der Player ohne Lyrics." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Shows the Lyrics button in the player. When off, the player has no lyrics."
+          }
+        }
+      }
+    },
+    "Wischgeste" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swipe gesture"
+          }
+        }
+      }
+    },
+    "Als Nächstes" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play next"
+          }
+        }
+      }
+    },
+    "Was passiert, wenn du einen Titel ganz nach links durchwischst. Kurzes Wischen zeigt weiterhin beide Aktionen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What happens when you swipe a track all the way to the left. A short swipe still shows both actions."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

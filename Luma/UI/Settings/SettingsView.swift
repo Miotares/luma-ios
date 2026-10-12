@@ -9,10 +9,10 @@ import UIKit
 
 struct SettingsView: View {
     @Environment(AppContainer.self) private var app
-    @Query private var tracks: [Track]
-    @Query private var albums: [Album]
-    @Query private var artists: [Artist]
-    @Query private var playlists: [Playlist]
+    /// Library totals. Loaded when the screen appears and after the actions that change them —
+    /// NOT as live queries: this tab stays mounted, and four unfiltered `@Query`s here re-read the
+    /// whole library (album covers included) on every save anywhere in the app.
+    @State private var stats = LibraryStats()
     @State private var showingDeleteConfirm = false
     @State private var showingImport = false
     @State private var showingEqualizer = false
@@ -25,6 +25,8 @@ struct SettingsView: View {
     @AppStorage(MediaStorage.backupDefaultsKey) private var backupEnabled = false
     @AppStorage(AudioPlayer.crossfadeDefaultsKey) private var crossfade: Double = 0
     @AppStorage(LoudnessService.enabledKey) private var normalizeVolume = true
+    @AppStorage(LyricsSettings.enabledKey) private var lyricsEnabled = true
+    @AppStorage(QueueSwipeSettings.fullSwipeAddsLastKey) private var fullSwipeAddsLast = false
     @AppStorage(MainTabView.startupTabKey) private var startupTab = LumaTab.library.rawValue
     #if os(macOS)
     @AppStorage(LumaAppearance.storageKey) private var macAppearance = LumaAppearance.system.rawValue
@@ -32,7 +34,6 @@ struct SettingsView: View {
     @State private var dedupResult: String?
     #endif
 
-    private var totalDuration: TimeInterval { tracks.reduce(0) { $0 + $1.duration } }
     private var appVersion: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—" }
 
     var body: some View {
@@ -61,6 +62,10 @@ struct SettingsView: View {
                     crossfadeBlock
                     normalizeBlock
                     equalizerBlock
+                    lyricsBlock
+                    #if os(iOS)
+                    swipeBlock
+                    #endif
                     sectionLabel("Mediathek")
                     statsBlock
                     #if os(iOS)
@@ -94,11 +99,14 @@ struct SettingsView: View {
         .sheet(isPresented: $showingSmartSettings) { SmartPlaylistSettingsView() }
         .sheet(isPresented: $showingHomeSettings) { HomeSettingsView() }
         .task { await loadStorageUsage() }
+        .onAppear { reloadStats() }
+        .onChange(of: app.importManager.isImporting) { _, importing in if !importing { reloadStats() } }
+        .onChange(of: app.folderScanner.isScanning) { _, scanning in if !scanning { reloadStats() } }
         .alert("Alle Titel löschen?", isPresented: $showingDeleteConfirm) {
             Button("Abbrechen", role: .cancel) {}
             Button("Alles löschen", role: .destructive) { deleteAllTracks() }
         } message: {
-            Text("Entfernt alle \(tracks.count) Titel. Kann nicht rückgängig gemacht werden.")
+            Text("Entfernt alle \(stats.trackCount) Titel. Kann nicht rückgängig gemacht werden.")
         }
         #if os(macOS)
         .alert("Doppelte Titel", isPresented: Binding(
@@ -138,15 +146,15 @@ struct SettingsView: View {
 
     private var statsBlock: some View {
         VStack(spacing: 0) {
-            infoRow("Songs", value: "\(tracks.count)")
+            infoRow("Songs", value: "\(stats.trackCount)")
             LumaSeparator(leadingPad: 0)
-            infoRow("Alben", value: "\(albums.count)")
+            infoRow("Alben", value: "\(stats.albumCount)")
             LumaSeparator(leadingPad: 0)
-            infoRow("Künstler", value: "\(artists.count)")
+            infoRow("Künstler", value: "\(stats.artistCount)")
             LumaSeparator(leadingPad: 0)
-            infoRow("Playlists", value: "\(playlists.count)")
+            infoRow("Playlists", value: "\(stats.playlistCount)")
             LumaSeparator(leadingPad: 0)
-            infoRow("Gesamtdauer", value: DurationText.hoursMinutes(totalDuration))
+            infoRow("Gesamtdauer", value: DurationText.hoursMinutes(stats.totalDuration))
         }
         .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal, 16)
@@ -310,6 +318,46 @@ struct SettingsView: View {
         }
     }
 
+    private var lyricsBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $lyricsEnabled) {
+                Text("Lyrics anzeigen").foregroundStyle(.lumaInk())
+            }
+            .tint(Color.lumaToggle)
+            Text("Zeigt im Player den Lyrics-Button. Ausgeschaltet bleibt der Player ohne Lyrics.")
+                .font(.caption)
+                .foregroundStyle(.lumaInk(0.4))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+    }
+
+    #if os(iOS)
+    private var swipeBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Wischgeste").foregroundStyle(.lumaInk())
+            Picker("Wischgeste", selection: $fullSwipeAddsLast) {
+                Text("Als Nächstes").tag(false)
+                Text("Ans Ende").tag(true)
+            }
+            .pickerStyle(.segmented)
+            Text("Was passiert, wenn du einen Titel ganz nach links durchwischst. Kurzes Wischen zeigt weiterhin beide Aktionen.")
+                .font(.caption)
+                .foregroundStyle(.lumaInk(0.4))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+    }
+    #endif
+
     private var homeBlock: some View {
         Button { showingHomeSettings = true } label: {
             HStack {
@@ -444,6 +492,7 @@ struct SettingsView: View {
             dedupResult = "Die Duplikatsuche ist fehlgeschlagen."
             return
         }
+        reloadStats()
         if result.removed == 0 {
             dedupResult = "Keine doppelten Titel gefunden."
         } else {
@@ -489,7 +538,12 @@ struct SettingsView: View {
     private func deleteAllTracks() {
         // One transaction instead of N save+@Query-republish cycles (was an O(n²) freeze).
         try? app.library.deleteAllTracks()
+        reloadStats()
         Task { await loadStorageUsage() }
+    }
+
+    private func reloadStats() {
+        stats = app.library.libraryStats()
     }
 
     private func loadStorageUsage() async {

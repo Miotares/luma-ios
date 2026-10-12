@@ -18,6 +18,7 @@ struct PlayerView: View {
     @State private var palette: ColorPalette?
     @State private var showingQueue = false
     @State private var showingLyrics = false
+    @AppStorage(LyricsSettings.enabledKey) private var lyricsEnabled = true
     @State private var showNavOptions = false
 
     private var track: Track? { app.player.currentTrack }
@@ -28,7 +29,9 @@ struct PlayerView: View {
                 ArtworkBackground(data: track?.resolvedArtworkData(), palette: palette)
             }
             // The tab view's toast host sits UNDER this sheet, so the player shows its own.
-            .lumaToastHost(forceDark: true)
+            // 28 pt = drag handle (14 + 4) + the header row's 10 pt inset → level with the
+            // close / "…" buttons.
+            .lumaToastHost(forceDark: true, top: 28)
             .sheet(isPresented: $showingQueue) { QueueView() }
             .sheet(isPresented: $showingLyrics) { LyricsView() }
             .confirmationDialog(track?.title ?? "", isPresented: $showNavOptions, titleVisibility: .visible) {
@@ -165,18 +168,20 @@ struct PlayerView: View {
                     .padding(.top, 24)
                     .padding(.horizontal, 4)
 
-                // Bottom: Queue · Lyrics · Output/AirPlay, in three equal columns. (The sleep-timer
-                // pill moved up under "Wird gespielt" to make room for Lyrics.)
+                // Bottom: Queue · Lyrics · Output/AirPlay in equal columns; Lyrics can be switched
+                // off in Settings. (The sleep-timer pill moved up under "Wird gespielt".)
                 HStack(alignment: .top, spacing: 0) {
                     Button { showingQueue = true } label: {
                         bottomControlLabel(icon: "list.bullet", title: "Warteschlange")
                     }
                     .frame(maxWidth: .infinity)
 
-                    Button { showingLyrics = true } label: {
-                        bottomControlLabel(icon: "quote.bubble", title: "Lyrics")
+                    if lyricsEnabled {
+                        Button { showingLyrics = true } label: {
+                            bottomControlLabel(icon: "quote.bubble", title: "Lyrics")
+                        }
+                        .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: .infinity)
 
                     VStack(spacing: 5) {
                         AirPlayRoutePicker()
