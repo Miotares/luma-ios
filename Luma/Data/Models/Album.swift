@@ -8,10 +8,11 @@ final class Album {
     var artistName: String
     var year: Int?
     var genre: String?
-    // Cover art bytes. `.externalStorage` keeps the (multi-MB) blob OUT of the SQLite row,
-    // so materializing an Album / running an @Query<Album> doesn't fault the image off disk —
-    // it's only read when artworkData is actually accessed.
-    @Attribute(.externalStorage) var artworkData: Data?
+    /// LEGACY cover bytes inside the database — covers are files now (`ArtworkStorage`, read
+    /// through `coverData`). The attribute stays so the schema is unchanged and so a library from
+    /// an older version keeps its covers until they have been moved over; it is private so nothing
+    /// else reads or writes it by accident.
+    @Attribute(.externalStorage) private var artworkData: Data?
     /// Bumped whenever the cover is replaced in the editor, so ArtworkView's decoded-image cache
     /// (keyed by `artworkCacheKey`) drops the old one. Defaulted → lightweight migration.
     var artworkVersion: Int = 0
@@ -41,6 +42,48 @@ final class Album {
     /// Cheap, stable key for the decoded-image cache — changes whenever the cover is replaced.
     var artworkCacheKey: String {
         artworkVersion == 0 ? id.uuidString : "\(id.uuidString)-a\(artworkVersion)"
+    }
+
+    // MARK: - Cover
+
+    /// The cover's bytes: the file, or — for a library whose covers haven't been moved yet — the
+    /// copy still in the database.
+    var coverData: Data? {
+        ArtworkStorage.read(ArtworkStorage.albumURL(id)) ?? legacyCoverData
+    }
+
+    var hasCover: Bool {
+        ArtworkStorage.exists(ArtworkStorage.albumURL(id)) || legacyCoverData != nil
+    }
+
+    /// Sets (or, with nil, removes) the cover. Does NOT bump `artworkVersion` — callers that
+    /// REPLACE a cover the UI may already have cached do that.
+    func setCover(_ data: Data?) {
+        let url = ArtworkStorage.albumURL(id)
+        guard let data else {
+            ArtworkStorage.remove(url)
+            if artworkData != nil { artworkData = nil }
+            return
+        }
+        if ArtworkStorage.write(data, to: url) {
+            if artworkData != nil { artworkData = nil }
+        } else {
+            artworkData = data   // disk refused the file — keep the cover in the database instead
+        }
+    }
+
+    /// The database copy — what the one-time move to files still has to pick up (nil once it is
+    /// done). An EMPTY value counts as none: SwiftData turns a NULL in this column into empty
+    /// data when it rewrites an album row from an older store, and treating that as "has a
+    /// cover" kept such an album from ever receiving one.
+    var legacyCoverData: Data? {
+        guard let data = artworkData, !data.isEmpty else { return nil }
+        return data
+    }
+
+    /// Drops the database copy — only after the file has been written and verified.
+    func clearLegacyCover() {
+        if artworkData != nil { artworkData = nil }
     }
 
     var sortedTracks: [Track] {

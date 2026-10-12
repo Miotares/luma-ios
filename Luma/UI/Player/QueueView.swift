@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct QueueView: View {
+    @Environment(\.coverCornerScale) private var coverCornerScale
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
     #if os(macOS)
@@ -205,7 +206,7 @@ struct QueueView: View {
         HStack(spacing: 12) {
             ZStack {
                 ArtworkView(data: track.resolvedArtworkData(), cacheKey: track.artworkCacheKey, cornerRadius: 6, size: 40)
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: 6 * coverCornerScale, style: .continuous)
                     .fill(.black.opacity(0.4))
                     .frame(width: 40, height: 40)
                 NowPlayingGlyph(isActive: app.player.state.isPlaying,

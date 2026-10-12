@@ -67,6 +67,13 @@ struct SearchView: View {
             #endif
             searchContent
         }
+        #if os(iOS) || os(visionOS)
+        // A tap anywhere that isn't a control (the empty page, the title, the gaps between
+        // results) puts the keyboard away — until now only Return did. Buttons, rows and the
+        // field itself take their taps first, so this never swallows one.
+        .contentShape(Rectangle())
+        .onTapGesture { searchFocused = false }
+        #endif
         .lumaHideNavBar()
         .background(Color.lumaBackground.ignoresSafeArea())
         .navigationDestination(for: Album.self) { AlbumDetailView(album: $0) }
@@ -114,9 +121,15 @@ struct SearchView: View {
                 }
             }
             .padding(.horizontal, 14)
-            .frame(height: 44)
+            .frame(height: 48)
             .background(Color.lumaInk(0.08), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             .padding(.horizontal, 16)
+            // The whole bar — and a margin around it — opens the keyboard, not just the thin
+            // line of text inside it (which was easy to miss with a thumb).
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+            .onTapGesture { searchFocused = true }
+            .padding(.vertical, -8)
         }
         .padding(.top, 20)
         .padding(.bottom, 12)
@@ -209,7 +222,7 @@ struct SearchView: View {
                     ForEach(filteredArtists) { artist in
                         NavigationLink(value: artist) {
                             HStack(spacing: 12) {
-                                ArtworkView(data: artist.sortedAlbums.first?.artworkData, cacheKey: artist.sortedAlbums.first?.artworkCacheKey, cornerRadius: 22, size: 44)
+                                ArtworkView(data: artist.sortedAlbums.first?.coverData, cacheKey: artist.sortedAlbums.first?.artworkCacheKey, cornerRadius: 22, size: 44)
                                 Text(artist.name).font(.body).foregroundStyle(.lumaInk())
                                 Spacer()
                                 Image(systemName: "chevron.right")
@@ -255,7 +268,7 @@ struct SearchView: View {
                     ForEach(filteredAlbums) { album in
                         NavigationLink(value: album) {
                             HStack(spacing: 12) {
-                                ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 8, size: 48)
+                                ArtworkView(data: album.coverData, cacheKey: album.artworkCacheKey, cornerRadius: 8, size: 48)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(album.title).font(.body.weight(.medium)).foregroundStyle(.lumaInk()).lineLimit(1)
                                     Text(album.artistName).font(.caption).foregroundStyle(.lumaInk(0.5))
@@ -293,6 +306,8 @@ struct SearchView: View {
             }
             .padding(.bottom, 20)
         }
+        // Starting to scroll the results puts the keyboard away as well.
+        .scrollDismissesKeyboard(.immediately)
         .lumaScrollClearance(playerActive: app.player.isActive)
     }
 

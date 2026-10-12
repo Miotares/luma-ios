@@ -18,8 +18,7 @@ struct PlayerView: View {
     @State private var palette: ColorPalette?
     @State private var showingQueue = false
     @State private var showingLyrics = false
-    @AppStorage(LyricsSettings.enabledKey) private var lyricsEnabled = true
-    @State private var showNavOptions = false
+    @Environment(\.coverCornerScale) private var coverCornerScale
 
     private var track: Track? { app.player.currentTrack }
 
@@ -34,15 +33,9 @@ struct PlayerView: View {
             .lumaToastHost(forceDark: true, top: 28)
             .sheet(isPresented: $showingQueue) { QueueView() }
             .sheet(isPresented: $showingLyrics) { LyricsView() }
-            .confirmationDialog(track?.title ?? "", isPresented: $showNavOptions, titleVisibility: .visible) {
-                if let album = track?.album {
-                    Button("Album anzeigen") { openLibraryItem(.album(album)) }
-                }
-                if let artist = track?.artist {
-                    Button("Künstler anzeigen") { openLibraryItem(.artist(artist)) }
-                }
-                Button("Abbrechen", role: .cancel) {}
-            }
+            // The Lyrics button exists only for a song whose file carries lyrics — look that up
+            // (once per song; the answer is cached) as soon as the song is shown.
+            .task(id: track?.id) { await app.lyrics.load(for: track) }
             .task(id: track?.id) {
                 guard let t = track else { return }
                 // A track with its own cover gets its own palette entry (keyed by the track).
@@ -123,7 +116,7 @@ struct PlayerView: View {
                 .padding(.horizontal, 28)
                 .shadow(color: .black.opacity(0.75), radius: 45, y: 36)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    RoundedRectangle(cornerRadius: 22 * coverCornerScale, style: .continuous)
                         .strokeBorder(.white.opacity(0.07), lineWidth: 0.5)
                         .padding(.horizontal, 28)
                 )
@@ -136,22 +129,7 @@ struct PlayerView: View {
             VStack(spacing: 0) {
                 // Title + like
                 HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        MarqueeText(text: track.title, font: .system(size: 23, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text(track.artistName)
-                            .font(.system(size: 16, weight: .medium))
-                            .tracking(-0.2)
-                            .foregroundStyle(.white.opacity(0.52))
-                            .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-                    // Only open the navigation dialog when there's actually somewhere to go —
-                    // otherwise it shows a dialog whose only button is Cancel.
-                    .onTapGesture {
-                        if track.album != nil || track.artist != nil { showNavOptions = true }
-                    }
+                    titleBlock(track: track)
                     Spacer(minLength: 12)
                     PlayerLikeButton(track: track)
                 }
@@ -168,19 +146,20 @@ struct PlayerView: View {
                     .padding(.top, 24)
                     .padding(.horizontal, 4)
 
-                // Bottom: Queue · Lyrics · Output/AirPlay in equal columns; Lyrics can be switched
-                // off in Settings. (The sleep-timer pill moved up under "Wird gespielt".)
+                // Bottom: Queue · Lyrics · Output/AirPlay in equal columns; Lyrics only for a song
+                // that has them. (The sleep-timer pill moved up under "Wird gespielt".)
                 HStack(alignment: .top, spacing: 0) {
                     Button { showingQueue = true } label: {
                         bottomControlLabel(icon: "list.bullet", title: "Warteschlange")
                     }
                     .frame(maxWidth: .infinity)
 
-                    if lyricsEnabled {
+                    if app.lyrics.hasLyrics(for: track) {
                         Button { showingLyrics = true } label: {
                             bottomControlLabel(icon: "quote.bubble", title: "Lyrics")
                         }
                         .frame(maxWidth: .infinity)
+                        .transition(.opacity)
                     }
 
                     VStack(spacing: 5) {
@@ -192,12 +171,53 @@ struct PlayerView: View {
                 }
                 .padding(.top, 28)
                 .padding(.horizontal, 6)
+                .animation(.easeInOut(duration: 0.25), value: app.lyrics.hasLyrics(for: track))
             }
             .padding(.horizontal, 28)
             .padding(.bottom, 34)
         }
         // Snappy press feedback for every transport/back/like button in the player.
         .buttonStyle(PressableButtonStyle())
+    }
+
+    /// Title + artist. A tap opens a menu that grows out of the title itself (it used to be a
+    /// dialog floating mid-screen, with no visible tie to what was tapped) — but only when there
+    /// is somewhere to go.
+    @ViewBuilder
+    private func titleBlock(track: Track) -> some View {
+        let label = VStack(alignment: .leading, spacing: 4) {
+            MarqueeText(text: track.title, font: .system(size: 23, weight: .bold))
+                .foregroundStyle(.white)
+            Text(track.artistName)
+                .font(.system(size: 16, weight: .medium))
+                .tracking(-0.2)
+                .foregroundStyle(.white.opacity(0.52))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+
+        if track.album != nil || track.artist != nil {
+            Menu {
+                if let album = track.album {
+                    Button { openLibraryItem(.album(album)) } label: {
+                        Label("Album anzeigen", systemImage: "square.stack")
+                    }
+                }
+                if let artist = track.artist {
+                    Button { openLibraryItem(.artist(artist)) } label: {
+                        Label("Künstler anzeigen", systemImage: "music.microphone")
+                    }
+                }
+            } label: {
+                label
+            }
+            // Keep "Album" first even when the menu opens upwards (iOS would flip the order).
+            .menuOrder(.fixed)
+            .accessibilityHint("Album oder Künstler anzeigen")
+        } else {
+            label
+        }
     }
 
     private func bottomControlLabel(icon: String, title: LocalizedStringKey) -> some View {
@@ -504,7 +524,7 @@ struct PlayerLikeButton: View {
 /// Transport row isolated so play/pause/shuffle/repeat taps re-render only here.
 struct PlayerTransport: View {
     @Environment(AppContainer.self) private var app
-    private var isPlaying: Bool { app.player.state.isPlaying }
+    private var isPlaying: Bool { app.player.showsPlaying }
 
     private var repeatModeLabel: LocalizedStringKey {
         switch app.queue.repeatMode {
@@ -535,7 +555,7 @@ struct PlayerTransport: View {
             .frame(maxWidth: .infinity)
             .accessibilityLabel("Vorheriger Titel")
 
-            Button { app.player.togglePlayPause() } label: {
+            Button { app.player.userTogglePlayPause() } label: {
                 ZStack {
                     Circle().fill(.white)
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")

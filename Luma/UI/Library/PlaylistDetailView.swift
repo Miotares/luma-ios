@@ -3,6 +3,7 @@ import SwiftData
 import UniformTypeIdentifiers
 
 struct PlaylistDetailView: View {
+    @Environment(\.coverCornerScale) private var coverCornerScale
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
     #if os(macOS)
@@ -443,7 +444,7 @@ struct PlaylistDetailView: View {
             PlaylistArtworkView(playlist: playlist, tracks: tracks, cornerRadius: 12)
                 .frame(width: 220, height: 220)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12 * coverCornerScale, style: .continuous)
                         .strokeBorder(.lumaInk(0.08), lineWidth: 0.5)
                 )
                 .shadow(color: .black.opacity(0.5), radius: 24, y: 14)
@@ -482,7 +483,7 @@ struct PlaylistDetailView: View {
             PlaylistArtworkView(playlist: playlist, tracks: tracks, cornerRadius: 20)
                 .frame(width: 210, height: 210)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    RoundedRectangle(cornerRadius: 20 * coverCornerScale, style: .continuous)
                         .strokeBorder(.lumaInk(0.07), lineWidth: 0.5)
                 )
                 .shadow(color: .black.opacity(0.55), radius: 30, y: 20)

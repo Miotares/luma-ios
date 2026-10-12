@@ -21,7 +21,7 @@ struct MetadataEditorView: View {
                     ArtworkPickerControl(
                         current: { track.resolvedArtworkData() },
                         currentKey: track.artworkCacheKey,
-                        fallback: { track.album?.artworkData },
+                        fallback: { track.album?.coverData },
                         fallbackKey: track.album?.artworkCacheKey,
                         canRemove: track.hasCustomArtwork,
                         removeLabel: "Eigenes Cover entfernen",

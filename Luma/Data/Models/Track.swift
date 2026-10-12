@@ -35,16 +35,19 @@ final class Track {
     /// Optional so the SwiftData migration stays lightweight.
     var loudnessLUFS: Double?
     var loudnessPeakDB: Double?
-    /// Lyrics stored for this track: typed/pasted in the lyrics editor, or picked up from a
-    /// `.lrc`/`.txt` file next to the audio at import. Raw text (LRC timestamps kept). nil for
-    /// most tracks — lyrics embedded in the file's tags are read on demand instead (LyricsReader),
-    /// so they don't bloat the track rows. Takes precedence over the embedded lyrics.
+    /// Lyrics stored WITH the track: the `.lrc`/`.txt` file that lay next to the audio at import
+    /// (raw text, LRC timestamps kept). nil for most tracks — lyrics embedded in the file's tags
+    /// are read on demand instead (LyricsReader), so they don't bloat the track rows. Takes
+    /// precedence over the embedded lyrics. (The name dates from a lyrics editor that existed in a
+    /// test build; it stays because renaming an attribute is a schema change.)
     var customLyrics: String?
     /// The track's OWN cover — picked in the editor, or embedded in a file that has no album tag
     /// (those all share the catch-all "Unknown Album", so its cover can't speak for them). Most
-    /// tracks have none and show their album's cover. External storage keeps the blob out of the
-    /// row; `hasCustomArtwork` lets a list row decide which cover applies WITHOUT faulting it.
-    @Attribute(.externalStorage) var artworkData: Data?
+    /// tracks have none and show their album's cover. The bytes are a file (`ArtworkStorage`, read
+    /// through `ownCoverData`); `hasCustomArtwork` lets a list row decide which cover applies
+    /// without touching the disk. This attribute is the LEGACY in-database copy, kept so the
+    /// schema is unchanged and read only until it has been moved to a file.
+    @Attribute(.externalStorage) private var artworkData: Data?
     var hasCustomArtwork: Bool = false
     /// Bumped on every cover change so ArtworkView's decoded-image cache can't show a stale one.
     var artworkVersion: Int = 0
@@ -130,9 +133,15 @@ final class Track {
         throw MediaStorage.StorageError.missingFile
     }
 
+    /// The track's own cover, if it has one.
+    var ownCoverData: Data? {
+        guard hasCustomArtwork else { return nil }
+        return ArtworkStorage.read(ArtworkStorage.trackURL(id)) ?? legacyCoverData
+    }
+
     /// The cover to show for this track: its own if it has one, otherwise its album's.
     func resolvedArtworkData() -> Data? {
-        hasCustomArtwork ? (artworkData ?? album?.artworkData) : album?.artworkData
+        ownCoverData ?? album?.coverData
     }
 
     /// Cheap, stable key for the decoded-image cache — changes whenever the visible cover does.
@@ -142,9 +151,32 @@ final class Track {
 
     /// Sets (or, with nil, removes) the track's own cover.
     func setCustomArtwork(_ data: Data?) {
-        artworkData = data
-        hasCustomArtwork = data != nil
+        let url = ArtworkStorage.trackURL(id)
+        if let data, !data.isEmpty {
+            if ArtworkStorage.write(data, to: url) {
+                if artworkData != nil { artworkData = nil }
+            } else {
+                artworkData = data   // disk refused the file — keep the cover in the database instead
+            }
+            hasCustomArtwork = true
+        } else {
+            ArtworkStorage.remove(url)
+            if artworkData != nil { artworkData = nil }
+            hasCustomArtwork = false
+        }
         artworkVersion &+= 1
+    }
+
+    /// The database copy — what the one-time move to files still has to pick up (nil once it is
+    /// done). Empty counts as none (see `Album.legacyCoverData`).
+    var legacyCoverData: Data? {
+        guard let data = artworkData, !data.isEmpty else { return nil }
+        return data
+    }
+
+    /// Drops the database copy — only after the file has been written and verified.
+    func clearLegacyCover() {
+        if artworkData != nil { artworkData = nil }
     }
 
     /// True when the track has a local copy (no external source needed).

@@ -16,9 +16,9 @@ struct AlbumMetadataEditorView: View {
             ScrollView {
                 VStack(spacing: 18) {
                     ArtworkPickerControl(
-                        current: { album.artworkData },
+                        current: { album.coverData },
                         currentKey: album.artworkCacheKey,
-                        canRemove: album.artworkData != nil,
+                        canRemove: album.hasCover,
                         removeLabel: "Cover entfernen",
                         change: $artworkChange
                     )

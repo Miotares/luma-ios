@@ -18,6 +18,8 @@ final class AppContainer {
     let folderScanner: FolderLibraryScanner
     let review = ReviewPromptManager()
     let toast = ToastCenter()
+    /// Lyrics of the current track (see `LyricsStore`).
+    let lyrics = LyricsStore()
     /// Last sorted order of the macOS Songs page, kept here because that page is destroyed on
     /// every sidebar section switch (see `MacLibrarySongsPage`).
     let songOrder = SongOrderCache()
@@ -70,6 +72,12 @@ final class AppContainer {
         // Recover real titles for songs that were imported under their container UUID (one-time,
         // re-reads the affected files in the background).
         Task { await lib.repairPlaceholderTitlesIfNeeded() }
+        // Move the covers of an existing library out of the database into files (one-time; runs
+        // once launch has settled — until then they are simply read from where they still are).
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            await lib.moveArtworkToFilesIfNeeded()
+        }
         // Reclaim disk from the abandoned full-resolution artwork cache (one-time, off-main).
         Task.detached { LegacyArtworkCleanup.purgeIfNeeded() }
 

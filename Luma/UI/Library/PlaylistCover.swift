@@ -136,6 +136,7 @@ struct GeneratedCoverView: View {
     /// The playlist title, drawn onto the cover when `config.showTitle` is true. nil/empty hides it.
     var title: String? = nil
     var cornerRadius: CGFloat = 14
+    @Environment(\.coverCornerScale) private var coverCornerScale
 
     var body: some View {
         GeometryReader { geo in
@@ -149,7 +150,7 @@ struct GeneratedCoverView: View {
             }
             .frame(width: geo.size.width, height: geo.size.height)
         }
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius * coverCornerScale, style: .continuous))
     }
 
     // Palette derived from the base hue: a light tint, a saturated mid, and a deep shade.

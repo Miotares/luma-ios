@@ -6,6 +6,7 @@ import PhotosUI
 /// never leaves the device), or an app-generated pattern they customise. Edits are held locally
 /// and committed in a single save, so tweaking colours doesn't churn SwiftData per change.
 struct PlaylistCoverEditor: View {
+    @Environment(\.coverCornerScale) private var coverCornerScale
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
 
@@ -77,9 +78,9 @@ struct PlaylistCoverEditor: View {
     private var preview: some View {
         coverPreview
             .frame(width: 220, height: 220)
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 24 * coverCornerScale, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                RoundedRectangle(cornerRadius: 24 * coverCornerScale, style: .continuous)
                     .strokeBorder(.lumaInk(0.08), lineWidth: 0.5)
             )
             .shadow(color: .black.opacity(0.5), radius: 22, y: 14)

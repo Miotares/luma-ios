@@ -25,7 +25,7 @@ struct SettingsView: View {
     @AppStorage(MediaStorage.backupDefaultsKey) private var backupEnabled = false
     @AppStorage(AudioPlayer.crossfadeDefaultsKey) private var crossfade: Double = 0
     @AppStorage(LoudnessService.enabledKey) private var normalizeVolume = true
-    @AppStorage(LyricsSettings.enabledKey) private var lyricsEnabled = true
+    @AppStorage(CoverCorners.squareKey) private var squareCovers = false
     @AppStorage(QueueSwipeSettings.fullSwipeAddsLastKey) private var fullSwipeAddsLast = false
     @AppStorage(MainTabView.startupTabKey) private var startupTab = LumaTab.library.rawValue
     #if os(macOS)
@@ -54,6 +54,7 @@ struct SettingsView: View {
                     startBlock
                     homeBlock
                     smartPlaylistsBlock
+                    coverCornersBlock
                     #if os(iOS)
                     sectionLabel("App-Icon")
                     appIconBlock
@@ -62,7 +63,6 @@ struct SettingsView: View {
                     crossfadeBlock
                     normalizeBlock
                     equalizerBlock
-                    lyricsBlock
                     #if os(iOS)
                     swipeBlock
                     #endif
@@ -318,13 +318,16 @@ struct SettingsView: View {
         }
     }
 
-    private var lyricsBlock: some View {
+    private var coverCornersBlock: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle(isOn: $lyricsEnabled) {
-                Text("Lyrics anzeigen").foregroundStyle(.lumaInk())
+            Text("Cover-Ecken").foregroundStyle(.lumaInk())
+            Picker("Cover-Ecken", selection: $squareCovers) {
+                Text("Abgerundet").tag(false)
+                Text("Eckig").tag(true)
             }
-            .tint(Color.lumaToggle)
-            Text("Zeigt im Player den Lyrics-Button. Ausgeschaltet bleibt der Player ohne Lyrics.")
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            Text("Eckig zeigt Cover vollständig – sinnvoll, wenn ein Cover einen Rahmen hat, den runde Ecken abschneiden.")
                 .font(.caption)
                 .foregroundStyle(.lumaInk(0.4))
                 .fixedSize(horizontal: false, vertical: true)

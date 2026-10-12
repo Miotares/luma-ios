@@ -25,21 +25,21 @@ func validEntryTrackMap(_ allTracks: [Track]) -> [PersistentIdentifier: Track] {
 ///                 that fault-storm fired on every tab switch / play-state flip (always-mounted
 ///                 PlaylistsView), the multi-second UI stalls where the UI lagged the audio.
 /// Prefetching turns both into single batched loads, so building rows / the map is a fast
-/// in-memory pass. `artworkData` is `.externalStorage`, so prefetching `album` does NOT pull
-/// the cover blobs — only the small Album rows.
+/// in-memory pass. Covers are files (`ArtworkStorage`), so prefetching `album` pulls only the
+/// small Album rows.
 func tracksRowDescriptor(sortByTitle: Bool = false, prefetchEntries: Bool = true) -> FetchDescriptor<Track> {
     var d = FetchDescriptor<Track>(sortBy: sortByTitle ? [SortDescriptor(\.title)] : [])
     d.relationshipKeyPathsForPrefetching = prefetchEntries ? [\.album, \.playlistEntries] : [\.album]
     return d
 }
 
-/// All albums for LIST surfaces (grid, search, pickers), WITHOUT their cover bytes.
+/// All albums for LIST surfaces (grid, search, pickers) — the scalar columns only.
 ///
-/// `Album.artworkData` is declared `.externalStorage`, but Core Data keeps a blob in the row unless
-/// it is large — in a real 119-album library 109 covers (21 MB) sat INSIDE the album table, so a
-/// plain `@Query<Album>` read all of them on every fetch and on every refresh after a save
-/// (140–180 ms each, per query). Listing only the scalar columns leaves the cover to be faulted
-/// in per album, when ArtworkView actually needs it.
+/// Covers used to sit INSIDE the album table (the legacy `artworkData` attribute: 21 MB for a real
+/// 119-album library), so a plain `@Query<Album>` read all of them on every fetch and on every
+/// refresh after a save (140–180 ms each, per query). They are files now, but a library that has
+/// not finished moving them (`LibraryRepository.moveArtworkToFilesIfNeeded`) still carries the
+/// blobs, so the list keeps naming just the columns it shows.
 func albumsRowDescriptor() -> FetchDescriptor<Album> {
     var d = FetchDescriptor<Album>(sortBy: [SortDescriptor(\.title)])
     d.propertiesToFetch = [\.id, \.title, \.artistName, \.year, \.genre, \.artworkVersion]
@@ -58,7 +58,7 @@ func playlistTracksDescriptor() -> FetchDescriptor<Track> {
 }
 
 /// Artist fetch that prefetches `albums`, which every artist row reads
-/// (`sortedAlbums.first?.artworkData`, `albumCount`). `tracks` is prefetched only on request:
+/// (`sortedAlbums.first?.coverData`, `albumCount`). `tracks` is prefetched only on request:
 /// prefetching it materializes EVERY track of EVERY artist (36 ms for 76 artists / 2k tracks, vs
 /// 4 ms without) just so a row can show `trackCount` — which a row gets far cheaper by faulting
 /// its own to-many (~0.03 ms, only for rows that actually appear). Pass `prefetchTracks: true`
@@ -409,6 +409,7 @@ struct PlaylistArtworkView: View {
     var playlist: Playlist?
     let tracks: [Track]
     var cornerRadius: CGFloat = 14
+    @Environment(\.coverCornerScale) private var coverCornerScale
 
     var body: some View {
         switch playlist?.coverStyle ?? .mosaic {
@@ -438,10 +439,8 @@ struct PlaylistArtworkView: View {
 
     /// The first four DISTINCT albums in playlist order, de-duplicated by album identity (not
     /// artwork bytes) so four songs from the same album don't repeat a tile. Crucially this
-    /// touches only the (cheap, externalStorage-free) Album rows — it does NOT read
-    /// `artworkData` here. The multi-MB blob is faulted lazily by ArtworkView's autoclosure,
-    /// only on a cache miss and off the card-build/scroll frame. (Reading the blob eagerly here
-    /// faulted it on the main thread for every card as it scrolled into view.)
+    /// touches only the (cheap) Album rows — it does NOT read the cover here. That is read lazily
+    /// by ArtworkView's autoclosure, only on a cache miss and off the card-build/scroll frame.
     private var coverAlbums: [Album] {
         var result: [Album] = []
         var seenAlbums = Set<PersistentIdentifier>()
@@ -462,17 +461,17 @@ struct PlaylistArtworkView: View {
                 let half = (geo.size.width - 2) / 2
                 VStack(spacing: 2) {
                     HStack(spacing: 2) {
-                        ArtworkView(data: albums[0].artworkData, cacheKey: albums[0].artworkCacheKey, cornerRadius: 0, size: half)
-                        ArtworkView(data: albums[1].artworkData, cacheKey: albums[1].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[0].coverData, cacheKey: albums[0].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[1].coverData, cacheKey: albums[1].artworkCacheKey, cornerRadius: 0, size: half)
                     }
                     HStack(spacing: 2) {
-                        ArtworkView(data: albums[2].artworkData, cacheKey: albums[2].artworkCacheKey, cornerRadius: 0, size: half)
-                        ArtworkView(data: albums[3].artworkData, cacheKey: albums[3].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[2].coverData, cacheKey: albums[2].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[3].coverData, cacheKey: albums[3].artworkCacheKey, cornerRadius: 0, size: half)
                     }
                 }
             }
             .aspectRatio(1, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius * coverCornerScale, style: .continuous))
         } else {
             // Single distinct album → one cover fills the tile. macOS caps the decode below the
             // stored ~1024px (the 220pt detail header @2x ≈ 440px, so 512 stays crisp) instead of
@@ -483,7 +482,7 @@ struct PlaylistArtworkView: View {
             #else
             let fallbackMax: Int? = nil
             #endif
-            ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.artworkCacheKey,
+            ArtworkView(data: albums.first?.coverData, cacheKey: albums.first?.artworkCacheKey,
                         cornerRadius: cornerRadius, size: nil, maxPixel: fallbackMax)
                 .aspectRatio(1, contentMode: .fit)
         }

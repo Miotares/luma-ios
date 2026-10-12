@@ -203,7 +203,7 @@ struct StatisticsView: View {
 
     /// A representative cover for the artist — the first of their tracks that has one.
     private func artistArtwork(_ artist: Artist) -> Data? {
-        artist.tracks.first(where: { $0.album?.artworkData != nil })?.album?.artworkData
+        artist.tracks.first(where: { $0.album?.hasCover == true })?.album?.coverData
     }
 
     private func sectionHeader(_ title: LocalizedStringKey) -> some View {

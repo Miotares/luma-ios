@@ -327,7 +327,8 @@ struct LibraryAlbumsContent: View {
     private var pinnedPlaylists: [Playlist] {
         guard let ids = try? JSONDecoder().decode([UUID].self, from: pinnedData), !ids.isEmpty else { return [] }
         let byId = Dictionary(playlists.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return ids.compactMap { byId[$0] }
+        var seen = Set<UUID>()
+        return ids.filter { seen.insert($0).inserted }.compactMap { byId[$0] }
     }
 
     var body: some View {
@@ -732,7 +733,7 @@ struct ArtistListRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ArtworkView(data: artist.sortedAlbums.first?.artworkData, cacheKey: artist.sortedAlbums.first?.artworkCacheKey, cornerRadius: 26, size: 52)
+            ArtworkView(data: artist.sortedAlbums.first?.coverData, cacheKey: artist.sortedAlbums.first?.artworkCacheKey, cornerRadius: 26, size: 52)
             VStack(alignment: .leading, spacing: 4) {
                 Text(artist.name).font(.body.weight(.semibold)).foregroundStyle(.lumaInk())
                 let a = artist.albumCount, t = artist.trackCount
@@ -757,7 +758,7 @@ struct AlbumListRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 8, size: 54)
+            ArtworkView(data: album.coverData, cacheKey: album.artworkCacheKey, cornerRadius: 8, size: 54)
             VStack(alignment: .leading, spacing: 3) {
                 Text(album.title)
                     .font(.system(size: 16, weight: .medium))
@@ -784,22 +785,25 @@ struct AlbumListRow: View {
 struct LibraryAlbumCard: View {
     let album: Album
     let cardWidth: CGFloat?
+    /// Second line under the title; the album artist when nil.
+    var subtitle: String? = nil
+    @Environment(\.coverCornerScale) private var coverCornerScale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let w = cardWidth {
-                ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 14, size: w)
+                ArtworkView(data: album.coverData, cacheKey: album.artworkCacheKey, cornerRadius: 14, size: w)
             } else {
                 // size: nil → fills the grid column (responsive). maxPixel caps the DECODE at
                 // ~512px so the gallery doesn't inflate full ~1024px covers for ~150 cards.
-                ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 14, size: nil, maxPixel: 512)
+                ArtworkView(data: album.coverData, cacheKey: album.artworkCacheKey, cornerRadius: 14, size: nil, maxPixel: 512)
                     .aspectRatio(1, contentMode: .fit)
                     // Cast the drop shadow from a constant rounded-rect shape behind the (opaque)
                     // cover, NOT from the image's own alpha. Same look, but the rasterizer gets a
                     // stable shadow path instead of re-deriving it from cover pixels every redraw —
                     // it adds up across the ~150 cards the macOS adaptive gallery shows at once.
                     .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14 * coverCornerScale, style: .continuous)
                             .fill(Color.black)
                             .shadow(color: .black.opacity(0.4), radius: 8, y: 4)
                     )
@@ -810,7 +814,7 @@ struct LibraryAlbumCard: View {
                     .tracking(cardWidth != nil ? 0 : -0.2)
                     .foregroundStyle(cardWidth != nil ? Color.lumaInk(0.88) : .lumaInk())
                     .lineLimit(1)
-                Text(album.artistName)
+                Text(subtitle ?? album.artistName)
                     .font(.system(size: cardWidth != nil ? 11 : 12))
                     .foregroundStyle(.lumaInk(cardWidth != nil ? 0.4 : 0.42))
                     .lineLimit(1)

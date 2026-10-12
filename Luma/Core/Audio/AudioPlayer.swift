@@ -32,6 +32,13 @@ final class AudioPlayer {
     /// changes but isActive doesn't), which re-ran every mounted tab body. `isActive` only
     /// changes when it truly changes, so play/pause no longer churns the whole UI.
     private(set) var isActive: Bool = false
+    /// Set between a tap on a play/pause BUTTON and the engine catching up (see
+    /// `userTogglePlayPause`), so the button can already show where playback is headed.
+    private var pendingPlayIntent: Bool?
+    /// What a play/pause button should show: the state a tap just asked for, else the real one.
+    var showsPlaying: Bool { pendingPlayIntent ?? state.isPlaying }
+    @ObservationIgnored private var userToggleScheduled = false
+    @ObservationIgnored private var statsPersistWork: DispatchWorkItem?
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
     /// True play head in seconds, accurate even while backgrounded — unlike the observable
@@ -316,6 +323,43 @@ final class AudioPlayer {
         return state.isPlaying ? pause() : resume()
     }
 
+    /// Play/pause from an on-screen BUTTON. Pausing and (above all) resuming do synchronous engine
+    /// work on the main thread — resume cold-restarts the engine so a slept Bluetooth route wakes
+    /// up — and the button's icon could only change after that, which read as a sluggish button.
+    /// So the icon flips at once (`showsPlaying`) and the engine work runs right after that frame
+    /// has been drawn. Remote commands keep calling `togglePlayPause()` directly: they need its
+    /// result, and there is no button to redraw.
+    func userTogglePlayPause() {
+        guard state.isActive else { return }
+        pendingPlayIntent = !showsPlaying
+        guard !userToggleScheduled else { return }   // a quick second tap just flips the intent
+        userToggleScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(30)) { [weak self] in
+            guard let self else { return }
+            self.userToggleScheduled = false
+            let wanted = self.pendingPlayIntent
+            self.pendingPlayIntent = nil   // from here on the button shows the real state again
+            guard let wanted, wanted != self.state.isPlaying else { return }
+            if wanted { self.resume() } else { self.pause() }
+        }
+    }
+
+    /// Writes the buffered play counts / listen time a moment after playback has gone quiet, not
+    /// in the middle of the pause tap: the save refreshes every list on screen, and that stall
+    /// landing on the tap made the pause button feel late. Off-screen nobody sees the refresh (and
+    /// no "left the foreground" save will follow), so there it happens immediately.
+    private func persistStatsSoon() {
+        statsPersistWork?.cancel()
+        statsPersistWork = nil
+        guard isForeground else { onStatsShouldPersist?(); return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, !self.state.isPlaying else { return }   // playing again → next pause
+            self.onStatsShouldPersist?()
+        }
+        statsPersistWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
+    }
+
     /// Returns whether it actually paused (false if not currently playing). The no-op case matters:
     /// when iOS mis-routes a "play" headset press to the pause command while we're already paused,
     /// returning false → .commandFailed lets iOS re-sync and send the play command on the next press.
@@ -348,7 +392,7 @@ final class AudioPlayer {
         trackStartedAt = nil
         stopDisplayTimer()
         flushListen()
-        onStatsShouldPersist?()   // persist coalesced play/listen stats on pause
+        persistStatsSoon()   // coalesced play/listen stats — shortly after the pause, see there
         onPersist?()
         nowPlayingUpdate()
         return true

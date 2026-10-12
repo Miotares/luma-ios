@@ -1,58 +1,23 @@
 import SwiftUI
-import SwiftData
 
-/// Lyrics of the track that is playing. They come from the track's stored text if it has one
-/// (typed in here, or picked up from a `.lrc` file at import), otherwise straight from the audio
-/// file's tags — read when this opens, so nothing has to be imported again for it to work.
+/// Lyrics of the track that is playing, as carried by its file (see `LyricsStore`). With
+/// timestamps (LRC) they follow playback: the current line is lit, the view scrolls along, and a
+/// tap on a line jumps there. Without timestamps it is the plain text to scroll through.
 struct LyricsView: View {
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
 
-    private enum LoadState: Equatable {
-        case loading
-        case none
-        case loaded(LyricsText)
-    }
-
-    @State private var state: LoadState = .loading
-    /// What the file itself carries — the editor's "reset" target. nil = the file has no lyrics.
-    @State private var fileLyrics: String?
-    /// The edit in progress. It pins the track it was opened for: playback can move on to the next
-    /// song while the editor is up, and the text must still be saved to the song it belongs to.
-    @State private var editing: EditTarget?
-
-    fileprivate struct EditTarget: Identifiable {
-        let id = UUID()
-        let track: Track
-        let initialText: String
-        let fileLyrics: String?
-    }
-
     private var track: Track? { app.player.currentTrack }
-
-    /// Reload when the track changes AND when its stored lyrics do (after an edit).
-    private var reloadKey: String {
-        guard let track else { return "-" }
-        return "\(track.id.uuidString)-\(track.customLyrics?.hashValue ?? 0)"
-    }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             content
         }
-        .background(Color.lumaBackground.ignoresSafeArea())
-        .task(id: reloadKey) { await load() }
-        .sheet(item: $editing) { target in
-            LyricsEditor(target: target).environment(app)
-        }
-    }
-
-    private func startEditing() {
-        guard let track else { return }
-        editing = EditTarget(track: track,
-                             initialText: track.customLyrics ?? fileLyrics ?? "",
-                             fileLyrics: fileLyrics)
+        // Same backdrop as the player this opens from: the cover, blurred. Always dark, so the
+        // text is white whatever the app's appearance.
+        .background { ArtworkBackground(data: track?.resolvedArtworkData(), palette: nil) }
+        .task(id: track?.id) { await app.lyrics.load(for: track) }
     }
 
     // MARK: - Header
@@ -62,199 +27,202 @@ struct LyricsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Lyrics")
                     .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.lumaInk())
+                    .foregroundStyle(.white)
                 if let track {
-                    Text("\(track.title) · \(track.artistName)")
+                    Text(verbatim: "\(track.title) · \(track.artistName)")
                         .font(.system(size: 13))
-                        .foregroundStyle(.lumaInk(0.5))
+                        .foregroundStyle(.white.opacity(0.55))
                         .lineLimit(1)
                 }
             }
             Spacer()
-
-            if track != nil, state != .loading {
-                Button { startEditing() } label: {
-                    headerIcon(state == .none ? "plus" : "pencil")
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(state == .none ? "Lyrics hinzufügen" : "Lyrics bearbeiten")
+            #if os(iOS) || os(visionOS)
+            Button { dismiss() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .frame(width: 30, height: 30)
+                    .background(.white.opacity(0.14), in: Circle())
+                    .contentShape(Circle())
             }
-            #if os(iOS)
-            Button { dismiss() } label: { headerIcon("xmark") }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Schließen")
+            .buttonStyle(.plain)
+            .accessibilityLabel("Schließen")
             #endif
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 22)
         .padding(.top, 20)
         .padding(.bottom, 14)
-    }
-
-    private func headerIcon(_ name: String) -> some View {
-        Image(systemName: name)
-            .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(.lumaInk(0.85))
-            .frame(width: 30, height: 30)
-            .background(Color.lumaInk(0.1), in: Circle())
-            .contentShape(Circle())
     }
 
     // MARK: - Content
 
     @ViewBuilder
     private var content: some View {
-        switch state {
-        case .loading:
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .none:
-            VStack(spacing: 22) {
-                LumaEmptyState(icon: "quote.bubble",
-                               title: "Keine Lyrics",
-                               subtitle: "Für diesen Titel sind keine Lyrics hinterlegt.")
-                if track != nil {
-                    Button { startEditing() } label: {
-                        Label("Lyrics hinzufügen", systemImage: "plus")
-                            .font(.system(size: 15, weight: .semibold))
-                            .padding(.horizontal, 18)
-                            .frame(height: 44)
-                            .background(Color.lumaAccent, in: Capsule())
-                            .foregroundStyle(.lumaOnAccent)
-                    }
-                    .buttonStyle(.plain)
+        if let track, app.lyrics.trackID == track.id, let lyrics = app.lyrics.lyrics {
+            if lyrics.isSynced {
+                SyncedLyrics(lines: lyrics.lines)
+                    .id(track.id)   // a new song starts at the top, with fresh scroll state
+            } else {
+                ScrollView {
+                    Text(lyrics.plainText)
+                        .font(.system(size: 21, weight: .semibold))
+                        .lineSpacing(9)
+                        .foregroundStyle(.white.opacity(0.92))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 22)
+                        .padding(.top, 6)
+                        .padding(.bottom, 40)
                 }
+                .id(track.id)
+            }
+        } else {
+            // The song changed to one without lyrics while this was open (the Lyrics button only
+            // exists for songs that have them).
+            VStack(spacing: 10) {
+                Image(systemName: "quote.bubble")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.white.opacity(0.3))
+                Text("Keine Lyrics")
+                    .font(.headline)
+                    .foregroundStyle(.white.opacity(0.7))
+                Text("Dieser Titel enthält keine Lyrics.")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .multilineTextAlignment(.center)
             }
             .padding(.horizontal, 32)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .loaded(let lyrics):
-            ScrollView {
-                Text(lyrics.plainText)
-                    .font(.system(size: 21, weight: .semibold))
-                    .lineSpacing(9)
-                    .foregroundStyle(.lumaInk(0.92))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 22)
-                    .padding(.top, 6)
-                    .padding(.bottom, 40)
-            }
-        }
-    }
-
-    // MARK: - Loading
-
-    private func load() async {
-        guard let track else {
-            state = .none
-            fileLyrics = nil
-            return
-        }
-        let stored = track.customLyrics
-        if let stored {
-            state = .loaded(LyricsText(stored))
-        } else {
-            state = .loading
-        }
-
-        // Always look at the file too: it is what's shown when nothing is stored, and what the
-        // editor can reset to when something is.
-        var fromFile: String?
-        if let url = try? track.resolveURL() {
-            let scoped = url.startAccessingSecurityScopedResource()
-            fromFile = await LyricsReader.lyrics(for: url)
-            if scoped { url.stopAccessingSecurityScopedResource() }
-        }
-        guard !Task.isCancelled else { return }   // the track changed while reading
-        fileLyrics = fromFile
-        if stored == nil {
-            let parsed = fromFile.map(LyricsText.init)
-            state = parsed.map { $0.isEmpty ? .none : .loaded($0) } ?? .none
         }
     }
 }
 
-// MARK: - Editor
+// MARK: - Synced lyrics
 
-/// Type, paste or correct a track's lyrics. Works on the RAW text, so LRC timestamps survive an
-/// edit. Saving stores the text on the track; it then takes precedence over what the file carries.
-private struct LyricsEditor: View {
+/// Timestamped lyrics that follow playback.
+private struct SyncedLyrics: View {
     @Environment(AppContainer.self) private var app
-    @Environment(\.dismiss) private var dismiss
-    private let track: Track
-    private let initialText: String
-    private let fileLyrics: String?
+    let lines: [LyricsText.Line]
 
-    @State private var text: String
+    /// Index (into `lines`) of the line being sung; nil before the first one.
+    @State private var active: Int?
+    /// While the user scrolls by hand the view must not yank the text back to the current line;
+    /// following resumes a few seconds after they let go (or at once when they tap a line).
+    @State private var followPausedUntil = Date.distantPast
 
-    init(target: LyricsView.EditTarget) {
-        track = target.track
-        initialText = target.initialText
-        fileLyrics = target.fileLyrics
-        _text = State(initialValue: target.initialText)
-    }
+    /// Lines light up this much BEFORE their timestamp: read a beat early feels in sync, a beat
+    /// late feels broken.
+    private static let lead: TimeInterval = 0.15
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 12) {
-                TextEditor(text: $text)
-                    .font(.system(size: 16))
-                    .foregroundStyle(.lumaInk())
-                    .tint(Color.lumaAccent)
-                    .scrollContentBackground(.hidden)
-                    .padding(10)
-                    .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .overlay(alignment: .topLeading) {
-                        if text.isEmpty {
-                            Text("Lyrics hier eingeben oder einfügen …")
-                                .font(.system(size: 16))
-                                .foregroundStyle(.lumaInk(0.3))
-                                .padding(.horizontal, 15)
-                                .padding(.vertical, 18)
-                                .allowsHitTesting(false)
-                        }
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
+                        lineView(line, index: index)
+                            .id(index)
                     }
-
-                if track.modelContext != nil, track.customLyrics != nil {
-                    // Stored text exists: offer the way back to what the file itself says (or to
-                    // nothing, when the file has no lyrics).
-                    Button(role: .destructive) {
-                        try? app.library.updateLyrics(track, text: nil)
-                        dismiss()
-                    } label: {
-                        Text(fileLyrics == nil ? "Lyrics entfernen" : "Auf Lyrics aus der Datei zurücksetzen")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 22)
+                .padding(.top, 10)
+                // Room below the last lines, so they too can scroll up to the reading position.
+                .padding(.bottom, 360)
+            }
+            // Lines fade out towards the header and the bottom edge instead of being cut off.
+            .mask {
+                LinearGradient(stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: .black, location: 0.05),
+                    .init(color: .black, location: 0.82),
+                    .init(color: .clear, location: 1),
+                ], startPoint: .top, endPoint: .bottom)
+            }
+            .onScrollPhaseChange { _, phase in
+                if phase == .interacting || phase == .decelerating {
+                    followPausedUntil = Date().addingTimeInterval(3)
                 }
             }
-            .padding(16)
-            .background(Color.lumaBackground.ignoresSafeArea())
-            .navigationTitle("Lyrics")
-            #if os(iOS) || os(visionOS)
-            .lumaInlineNavTitle()
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Abbrechen") { dismiss() }
-                        .foregroundStyle(.lumaInk(0.8))
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Sichern") {
-                        // Skip the write if the track was deleted while the editor was open.
-                        if track.modelContext != nil { try? app.library.updateLyrics(track, text: text) }
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
-                    .foregroundStyle(Color.lumaAccent)
-                    .disabled(text == initialText)
-                }
+            .onChange(of: active) { _, index in
+                guard let index, Date() >= followPausedUntil else { return }
+                withAnimation(.easeInOut(duration: 0.5)) { proxy.scrollTo(index, anchor: Self.readingAnchor) }
             }
-            .lumaDarkNavBackground()
-            .lumaDarkNavScheme()
+            .task { await follow(proxy) }
         }
-        #if os(macOS)
-        .frame(minWidth: 420, minHeight: 460)
-        #endif
-        // Don't let an accidental swipe-down silently throw away typed lyrics.
-        .interactiveDismissDisabled(text != initialText)
+    }
+
+    /// Where the current line sits in the view: a little above the middle.
+    private static let readingAnchor = UnitPoint(x: 0.5, y: 0.32)
+
+    @ViewBuilder
+    private func lineView(_ line: LyricsText.Line, index: Int) -> some View {
+        let isActive = index == active
+        if let time = line.time {
+            Button {
+                app.player.seek(to: time)
+                followPausedUntil = .distantPast
+                active = index
+            } label: {
+                // A timestamp without words marks an instrumental stretch.
+                Text(line.text.isEmpty ? "♪" : line.text)
+                    .font(.system(size: 25, weight: .bold))
+                    .tracking(-0.3)
+                    .multilineTextAlignment(.leading)
+                    .foregroundStyle(.white.opacity(isActive ? 1 : 0.34))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .animation(.easeInOut(duration: 0.3), value: isActive)
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(isActive ? .isSelected : [])
+        } else if !line.text.isEmpty {
+            // Untimed text inside timed lyrics (a heading, a credit line): shown, never lit.
+            Text(line.text)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.34))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// Keeps `active` in step with playback while the view is on screen.
+    ///
+    /// The player publishes its position only about five times a second — too coarse to switch
+    /// lines on time. So between two published values the position is carried forward by the
+    /// clock, and looked at often; `active` (the only state this writes) changes just once per
+    /// line, so the text is not re-laid-out in between.
+    private func follow(_ proxy: ScrollViewProxy) async {
+        var lastPublished = app.player.currentTime
+        var lastPublishedAt = Date()
+        var first = true
+        while !Task.isCancelled {
+            let now = Date()
+            let published = app.player.currentTime
+            if published != lastPublished {
+                lastPublished = published
+                lastPublishedAt = now
+            }
+            var position = published
+            if app.player.state.isPlaying {
+                position += min(now.timeIntervalSince(lastPublishedAt), 0.4)
+            }
+            let index = lineIndex(at: position + Self.lead)
+            if index != active { active = index }
+            if first {
+                // Opened mid-song: start at the current line, without the scroll animation.
+                first = false
+                if let index { proxy.scrollTo(index, anchor: Self.readingAnchor) }
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+    }
+
+    /// The last timed line at or before `position` (lines are in playing order).
+    private func lineIndex(at position: TimeInterval) -> Int? {
+        var result: Int?
+        for (index, line) in lines.enumerated() {
+            guard let time = line.time else { continue }
+            if time <= position { result = index } else { break }
+        }
+        return result
     }
 }

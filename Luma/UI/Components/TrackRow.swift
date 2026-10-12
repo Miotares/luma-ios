@@ -24,6 +24,7 @@ enum TrackSelectGesture {
 }
 
 struct TrackRow: View, Equatable {
+    @Environment(\.coverCornerScale) private var coverCornerScale
     let track: Track
     var showArtwork: Bool = false
     var showArtistName: Bool = true
@@ -389,7 +390,7 @@ struct TrackRow: View, Equatable {
             ZStack {
                 ArtworkView(data: track.resolvedArtworkData(), cacheKey: track.artworkCacheKey, cornerRadius: 6, size: coverSize)
                 if isCurrentTrack {
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: 6 * coverCornerScale, style: .continuous)
                         .fill(.black.opacity(0.5))
                         .frame(width: coverSize, height: coverSize)
                     NowPlayingGlyph(isActive: isPlaying && app.player.isForeground,
@@ -398,7 +399,7 @@ struct TrackRow: View, Equatable {
                     // macOS hover: a one-click play button over the cover (double-clicking the row
                     // still plays too — both gestures coexist). The button fills the full cover so a
                     // single click anywhere on it plays.
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: 6 * coverCornerScale, style: .continuous)
                         .fill(.black.opacity(0.45))
                         .frame(width: coverSize, height: coverSize)
                     hoverPlayButton(glyph: 16, hit: CGSize(width: coverSize, height: coverSize), tint: .white)

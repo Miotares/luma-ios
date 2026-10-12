@@ -74,6 +74,7 @@ struct LumaApp: App {
                 .modelContainer(modelContainer)
                 .tint(Color.lumaAccent)
                 .lumaForcedAppearance()
+                .lumaCoverCornerSetting()
                 .onChange(of: scenePhase) { oldPhase, phase in
                     // Persist the play head + playback stats whenever we leave the foreground,
                     // so a background-kill still resumes where the user left off and keeps the
@@ -128,6 +129,7 @@ struct LumaApp: App {
                 .environment(container)
                 .modelContainer(modelContainer)
                 .tint(Color.lumaAccent)
+                .lumaCoverCornerSetting()
         } label: {
             Image(systemName: "music.note")
         }

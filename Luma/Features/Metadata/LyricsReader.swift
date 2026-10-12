@@ -1,15 +1,10 @@
 import AVFoundation
 import Foundation
-
-/// User setting for the lyrics feature.
-nonisolated enum LyricsSettings {
-    /// Whether the Lyrics button is offered in the player (default on).
-    static let enabledKey = "lyricsEnabled"
-}
+import Observation
 
 /// Lyrics text as shown in the app. Lyrics often come in LRC form — every line prefixed with a
-/// `[mm:ss.xx]` timestamp — so the raw text is parsed into lines with optional times. V1 shows
-/// the plain lines; the times are kept so synced display can be added without re-reading anything.
+/// `[mm:ss.xx]` timestamp — so the raw text is parsed into lines with optional times. With times
+/// the lyrics view follows playback line by line; without, it shows the plain text.
 nonisolated struct LyricsText: Equatable, Sendable {
     struct Line: Equatable, Sendable {
         var time: TimeInterval?
@@ -21,7 +16,7 @@ nonisolated struct LyricsText: Equatable, Sendable {
     /// True when the text carried timestamps (an LRC file / LRC text in the lyrics tag).
     var isSynced: Bool { lines.contains { $0.time != nil } }
 
-    /// The lyrics without any timestamps, as the user reads (and edits) them.
+    /// The lyrics without any timestamps.
     var plainText: String { lines.map(\.text).joined(separator: "\n") }
 
     var isEmpty: Bool { lines.allSatisfy { $0.text.isEmpty } }
@@ -30,11 +25,19 @@ nonisolated struct LyricsText: Equatable, Sendable {
         var parsed: [Line] = []
         let timestamp = #/^\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?\]/#
         let metadataTag = #/^\[[A-Za-z#]+:[^\]]*\]\s*$/#   // [ar:…], [ti:…], [offset:…], …
+        let offsetTag = #/^\[offset:\s*([+-]?\d+)\s*\]/#.ignoresCase()
+        let wordTimestamp = #/<\d{1,3}:\d{1,2}(?:[.:]\d{1,3})?>/#   // "enhanced" LRC, per word
+        // `[offset:±ms]`: a positive value means the lyrics should appear EARLIER.
+        var offset: TimeInterval = 0
 
         for rawLine in raw.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
             .components(separatedBy: "\n") {
             var rest = Substring(rawLine.trimmingCharacters(in: .whitespaces))
+            if let match = rest.firstMatch(of: offsetTag) {
+                offset = (Double(match.1) ?? 0) / 1000
+                continue
+            }
             if rest.firstMatch(of: metadataTag) != nil { continue }
 
             // One line can carry several timestamps ("[00:12.00][01:15.00]Chorus").
@@ -46,7 +49,7 @@ nonisolated struct LyricsText: Equatable, Sendable {
                 times.append(minutes * 60 + seconds + fraction)
                 rest = rest[match.range.upperBound...]
             }
-            let text = rest.trimmingCharacters(in: .whitespaces)
+            let text = rest.replacing(wordTimestamp, with: "").trimmingCharacters(in: .whitespaces)
             if times.isEmpty {
                 parsed.append(Line(time: nil, text: text))
             } else {
@@ -55,6 +58,9 @@ nonisolated struct LyricsText: Equatable, Sendable {
         }
 
         if parsed.contains(where: { $0.time != nil }) {
+            if offset != 0 {
+                parsed = parsed.map { Line(time: $0.time.map { max(0, $0 - offset) }, text: $0.text) }
+            }
             // Repeated lines were expanded above — put everything back in playing order.
             // (Stable for untimed lines, which keep their place relative to their neighbours.)
             parsed = parsed.enumerated().sorted { a, b in
@@ -69,6 +75,63 @@ nonisolated struct LyricsText: Equatable, Sendable {
         while parsed.first?.text.isEmpty == true { parsed.removeFirst() }
         while parsed.last?.text.isEmpty == true { parsed.removeLast() }
         lines = parsed
+    }
+}
+
+/// The lyrics of the track that is playing, loaded once per track and shared by everything that
+/// needs them: the player's Lyrics button (shown only when there ARE lyrics) and the lyrics view.
+@Observable
+final class LyricsStore {
+    /// The track `lyrics` belongs to — nil while nothing has been looked up yet.
+    private(set) var trackID: UUID?
+    /// nil = this track has no lyrics.
+    private(set) var lyrics: LyricsText?
+    /// The last few answers, so skipping back and forth doesn't re-read the files.
+    private var cache: [UUID: LyricsText?] = [:]
+    private var cacheOrder: [UUID] = []
+    private var loading: UUID?
+
+    /// Whether `track` is known to have lyrics (false until its lookup has finished).
+    func hasLyrics(for track: Track?) -> Bool {
+        guard let track, track.id == trackID else { return false }
+        return lyrics != nil
+    }
+
+    /// Looks up the lyrics of `track`: text stored with the track (a `.lrc` file picked up at
+    /// import), else the lyrics tag of the audio file, else a `.lrc`/`.txt` beside it.
+    func load(for track: Track?) async {
+        guard let track else {
+            trackID = nil
+            lyrics = nil
+            return
+        }
+        let id = track.id
+        if let known = cache[id] {
+            trackID = id
+            lyrics = known
+            return
+        }
+        if trackID != id {
+            // Don't keep showing the previous track's lyrics (or button) while this one is read.
+            trackID = id
+            lyrics = nil
+        }
+        guard loading != id else { return }   // already being read for another caller
+        loading = id
+        defer { if loading == id { loading = nil } }
+
+        var raw = track.customLyrics
+        if raw == nil, let url = try? track.resolveURL() {
+            let scoped = url.startAccessingSecurityScopedResource()
+            raw = await LyricsReader.lyrics(for: url)
+            if scoped { url.stopAccessingSecurityScopedResource() }
+        }
+        let parsed = raw.map(LyricsText.init).flatMap { $0.isEmpty ? nil : $0 }
+        cache[id] = .some(parsed)
+        cacheOrder.append(id)
+        if cacheOrder.count > 30 { cache[cacheOrder.removeFirst()] = nil }
+        // Another track may have started while the file was being read.
+        if trackID == id { lyrics = parsed }
     }
 }
 

@@ -44,11 +44,11 @@ struct MiniPlayer: View {
                         Task { await app.queue.playPrevious() }
                     }
                     controlButton(
-                        app.player.state.isPlaying ? "pause.fill" : "play.fill",
+                        app.player.showsPlaying ? "pause.fill" : "play.fill",
                         size: 26, weight: .medium,
-                        label: app.player.state.isPlaying ? "Pause" : "Wiedergabe"
+                        label: app.player.showsPlaying ? "Pause" : "Wiedergabe"
                     ) {
-                        app.player.togglePlayPause()
+                        app.player.userTogglePlayPause()
                     }
                     controlButton("forward.fill", size: 18, label: "Nächster Titel") {
                         Task { await app.queue.advance() }

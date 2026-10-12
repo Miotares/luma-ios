@@ -44,8 +44,8 @@ struct MacMenuBarPlayer: View {
 
             HStack(spacing: 28) {
                 transport("backward.fill", size: 16) { Task { await app.queue.playPrevious() } }
-                transport(app.player.state.isPlaying ? "pause.fill" : "play.fill", size: 22) {
-                    _ = app.player.togglePlayPause()
+                transport(app.player.showsPlaying ? "pause.fill" : "play.fill", size: 22) {
+                    app.player.userTogglePlayPause()
                 }
                 transport("forward.fill", size: 16) { Task { await app.queue.advance() } }
             }

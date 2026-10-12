@@ -4,6 +4,7 @@ import ImageIO
 import CoreImage
 
 struct AlbumDetailView: View {
+    @Environment(\.coverCornerScale) private var coverCornerScale
     @Environment(AppContainer.self) private var app
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Playlist.sortIndex) private var playlists: [Playlist]
@@ -13,7 +14,7 @@ struct AlbumDetailView: View {
     @State private var showingAlbumEditor = false
     @State private var showingDeleteConfirm = false
     /// Set when the user confirms deletion; the album is actually removed in onDisappear,
-    /// once this view (which reads album.artworkData / album.tracks) is off screen.
+    /// once this view (which reads album.coverData / album.tracks) is off screen.
     @State private var pendingDeletion = false
 
     @State private var isSelecting = false
@@ -65,7 +66,7 @@ struct AlbumDetailView: View {
     private var content: some View {
         ZStack(alignment: .topLeading) {
             // Background
-            DetailBackground(artworkData: album.artworkData)
+            DetailBackground(artworkData: album.coverData)
 
             // Scrollable content — a List; macOS gets native ⌘/⇧-click multi-select.
             trackListView
@@ -173,7 +174,7 @@ struct AlbumDetailView: View {
         .alert("Album löschen?", isPresented: $showingDeleteConfirm) {
             Button("Abbrechen", role: .cancel) {}
             Button("Löschen", role: .destructive) {
-                // Don't delete inline: this view's body reads album.artworkData (externalStorage)
+                // Don't delete inline: this view's body reads album.coverData (externalStorage)
                 // and album.sortedTracks/tracks. Deleting now — even after dismiss() — lets the
                 // save republish @Query and re-evaluate this view's body WHILE it is still mounted
                 // during the pop transition, faulting the just-deleted Album (crash). Instead flag
@@ -328,9 +329,9 @@ struct AlbumDetailView: View {
     #if os(macOS)
     private var macAlbumHeader: some View {
         HStack(alignment: .bottom, spacing: 28) {
-            ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 12, size: 220)
+            ArtworkView(data: album.coverData, cacheKey: album.artworkCacheKey, cornerRadius: 12, size: 220)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12 * coverCornerScale, style: .continuous)
                         .strokeBorder(.lumaInk(0.08), lineWidth: 0.5)
                 )
                 .shadow(color: .black.opacity(0.5), radius: 24, y: 14)
@@ -380,9 +381,9 @@ struct AlbumDetailView: View {
         VStack(spacing: 0) {
             // Artwork — fixed square (matches mockup `size={210}`); a flexible
             // size inside the vertical ScrollView would grow unbounded.
-            ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 20, size: 210)
+            ArtworkView(data: album.coverData, cacheKey: album.artworkCacheKey, cornerRadius: 20, size: 210)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    RoundedRectangle(cornerRadius: 20 * coverCornerScale, style: .continuous)
                         .strokeBorder(.lumaInk(0.07), lineWidth: 0.5)
                 )
                 .shadow(color: .black.opacity(0.55), radius: 30, y: 20)

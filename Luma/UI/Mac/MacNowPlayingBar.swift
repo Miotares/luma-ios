@@ -14,11 +14,12 @@ struct MacNowPlayingBar: View {
     var isQueueOpen: Bool = false
     @State private var showingEQ = false
     @State private var showingLyrics = false
-    @AppStorage(LyricsSettings.enabledKey) private var lyricsEnabled = true
 
     var body: some View {
         if let track = app.player.currentTrack {
             content(track)
+                // The Lyrics button exists only for a song whose file carries lyrics.
+                .task(id: track.id) { await app.lyrics.load(for: track) }
         }
     }
 
@@ -33,9 +34,9 @@ struct MacNowPlayingBar: View {
                 transport("backward.fill", size: 14, label: "Vorheriger Titel") {
                     Task { await app.queue.playPrevious() }
                 }
-                transport(app.player.state.isPlaying ? "pause.fill" : "play.fill", size: 18, weight: .medium,
-                          label: app.player.state.isPlaying ? "Pause" : "Wiedergabe") {
-                    app.player.togglePlayPause()
+                transport(app.player.showsPlaying ? "pause.fill" : "play.fill", size: 18, weight: .medium,
+                          label: app.player.showsPlaying ? "Pause" : "Wiedergabe") {
+                    app.player.userTogglePlayPause()
                 }
                 transport("forward.fill", size: 14, label: "Nächster Titel") {
                     Task { await app.queue.advance() }
@@ -86,7 +87,7 @@ struct MacNowPlayingBar: View {
                             EqualizerView().environment(app).frame(width: 380, height: 460)
                         }
 
-                        if lyricsEnabled {
+                        if app.lyrics.hasLyrics(for: app.player.currentTrack) {
                             Button { showingLyrics.toggle() } label: {
                                 controlIcon("quote.bubble",
                                             tint: showingLyrics ? Color.lumaAccent : .lumaInk(0.75))

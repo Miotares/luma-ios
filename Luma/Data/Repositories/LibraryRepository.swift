@@ -152,7 +152,7 @@ final class LibraryRepository {
             relinkTrackAlbumAndArtist(track, groupingArtist: metadata.albumArtistName, inheritArtwork: false)
             if let cover = metadata.artworkThumbnail ?? metadata.artworkData {
                 if metadata.hasAlbumTag {
-                    if let album = track.album, album.artworkData == nil { album.artworkData = cover }
+                    if let album = track.album, !album.hasCover { album.setCover(cover) }
                 } else if !track.hasCustomArtwork {
                     // Untagged: the embedded cover is this track's own, not the catch-all album's.
                     track.setCustomArtwork(cover)
@@ -222,12 +222,87 @@ final class LibraryRepository {
         try context.save()
     }
 
-    /// Stores lyrics for a track; empty or nil removes them (the file's embedded lyrics, if any,
-    /// show again).
-    func updateLyrics(_ track: Track, text: String?) throws {
-        let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        track.customLyrics = trimmed.isEmpty ? nil : trimmed
-        try context.save()
+    // MARK: - Covers: database → files (one-time)
+
+    private static let didMoveArtworkKey = "didMoveArtworkToFiles_v1"
+
+    /// Moves the covers of an existing library out of the database into files (`ArtworkStorage`).
+    ///
+    /// Copy first, delete second: a cover is cleared from the database only after its file has
+    /// been written and its size verified, and that clearing is saved per small batch. Whatever
+    /// happens in between — the app is killed, the disk is full — every cover is still in at least
+    /// one of the two places, and the reader (`coverData`) looks in both. The pass simply runs
+    /// again on the next launch until nothing is left; only then is it marked done.
+    func moveArtworkToFilesIfNeeded() async {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: Self.didMoveArtworkKey) else { return }
+
+        var complete = true
+        // Albums — the scalar columns only; each legacy blob is then faulted one album at a time.
+        if let albums = try? context.fetch(albumsRowDescriptor()) {
+            if !(await moveLegacyCovers(of: albums,
+                                        legacy: { $0.legacyCoverData },
+                                        url: { ArtworkStorage.albumURL($0.id) },
+                                        clear: { $0.clearLegacyCover() })) { complete = false }
+        } else {
+            complete = false
+        }
+        // Tracks with a cover of their own.
+        if let tracks = try? context.fetch(FetchDescriptor<Track>(predicate: #Predicate { $0.hasCustomArtwork })) {
+            if !(await moveLegacyCovers(of: tracks,
+                                        legacy: { $0.legacyCoverData },
+                                        url: { ArtworkStorage.trackURL($0.id) },
+                                        clear: { $0.clearLegacyCover() })) { complete = false }
+        } else {
+            complete = false
+        }
+        if complete { defaults.set(true, forKey: Self.didMoveArtworkKey) }
+    }
+
+    /// Returns false if any cover could not be moved (it then stays in the database, still shown).
+    private func moveLegacyCovers<Model: PersistentModel>(
+        of models: [Model],
+        legacy: (Model) -> Data?,
+        url: (Model) -> URL,
+        clear: (Model) -> Void
+    ) async -> Bool {
+        var allMoved = true
+        var index = 0
+        while index < models.count {
+            // Small batches: each save refreshes the lists, and a batch's blobs sit in memory.
+            let batch = models[index..<min(index + 24, models.count)]
+            index += 24
+
+            var pending: [(model: Model, url: URL, data: Data)] = []
+            for model in batch where model.modelContext != nil {
+                if let data = legacy(model) { pending.append((model, url(model), data)) }
+            }
+            guard !pending.isEmpty else { continue }
+
+            let jobs = pending.map { (url: $0.url, data: $0.data) }
+            let written = await Task.detached(priority: .utility) { () -> [Bool] in
+                jobs.map { job in
+                    // A file that is already there was written by an interrupted earlier pass —
+                    // or is a NEWER cover the user picked meanwhile. Either way it must not be
+                    // overwritten with the database copy.
+                    ArtworkStorage.exists(job.url) || ArtworkStorage.write(job.data, to: job.url)
+                }
+            }.value
+
+            var cleared = false
+            for (item, ok) in zip(pending, written) {
+                guard ok else { allMoved = false; continue }
+                // Deleted while the files were being written → nothing to clear.
+                guard item.model.modelContext != nil else { continue }
+                clear(item.model)
+                cleared = true
+            }
+            if cleared {
+                do { try context.save() } catch { allMoved = false }
+            }
+            await Task.yield()
+        }
+        return allMoved
     }
 
     /// Sets (or, with nil, removes) a track's own cover. `data` is already downscaled by the caller.
@@ -238,7 +313,7 @@ final class LibraryRepository {
 
     /// Replaces (or, with nil, removes) an album's cover. `data` is already downscaled by the caller.
     func updateAlbumArtwork(_ album: Album, data: Data?) throws {
-        album.artworkData = data
+        album.setCover(data)
         album.artworkVersion &+= 1
         try context.save()
     }
@@ -255,6 +330,7 @@ final class LibraryRepository {
         if let fileName = track.localFileName {
             MediaStorage.delete(filename: fileName)
         }
+        if track.hasCustomArtwork { ArtworkStorage.remove(ArtworkStorage.trackURL(track.id)) }
         if let album = track.album {
             album.tracks.removeAll { $0.id == track.id }
             if album.tracks.isEmpty {
@@ -700,7 +776,7 @@ final class LibraryRepository {
                 }
                 if keeper.customLyrics == nil { keeper.customLyrics = dup.customLyrics }
                 if !keeper.hasCustomArtwork, dup.hasCustomArtwork {
-                    keeper.setCustomArtwork(dup.artworkData)
+                    keeper.setCustomArtwork(dup.ownCoverData)
                 }
                 if keeper.loudnessLUFS == nil {
                     keeper.loudnessLUFS = dup.loudnessLUFS
@@ -742,7 +818,7 @@ final class LibraryRepository {
         // so the artist-emptiness check below sees the up-to-date state.
         if oldAlbum?.id != targetAlbum.id {
             oldAlbum?.tracks.removeAll { $0.id == track.id }
-            if inheritArtwork, targetAlbum.artworkData == nil { targetAlbum.artworkData = oldAlbum?.artworkData }
+            if inheritArtwork, !targetAlbum.hasCover, let cover = oldAlbum?.coverData { targetAlbum.setCover(cover) }
             track.album = targetAlbum
             targetAlbum.tracks.append(track)
             if let old = oldAlbum, old.tracks.isEmpty { deleteAlbum(old) }
@@ -784,6 +860,7 @@ final class LibraryRepository {
         if let artist = album.artist {
             artist.albums.removeAll { $0.id == album.id }
         }
+        ArtworkStorage.remove(ArtworkStorage.albumURL(album.id))
         context.delete(album)
     }
 }

@@ -7,7 +7,7 @@ struct ArtistDetailView: View {
     @Query(sort: \Playlist.sortIndex) private var playlists: [Playlist]
     let artist: Artist
 
-    private var artworkData: Data? { artist.sortedAlbums.first?.artworkData }
+    private var artworkData: Data? { artist.sortedAlbums.first?.coverData }
     private var allTracks: [Track] { artist.sortedAlbums.flatMap { $0.sortedTracks } }
 
     var body: some View {
@@ -33,42 +33,33 @@ struct ArtistDetailView: View {
         ZStack(alignment: .topLeading) {
             DetailBackground(artworkData: artworkData)
 
-            List {
-                artistHeader
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets())
+            // The artist's albums as a gallery — the same two-up cards as the library's start
+            // page. (This used to list every album with all its songs unfolded, which made a
+            // long, flat page; the songs are one tap away, in the album.)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    artistHeader
 
-                ForEach(artist.sortedAlbums) { album in
-                    NavigationLink(destination: AlbumDetailView(album: album)) {
-                        albumNavRow(album)
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 20, leading: 20, bottom: 4, trailing: 16))
+                    Text("Alben")
+                        .font(.system(size: 20, weight: .bold))
+                        .tracking(-0.35)
+                        .foregroundStyle(.lumaInk())
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 14)
 
-                    ForEach(album.sortedTracks) { track in
-                        TrackRow(track: track, showArtistName: false, showsMenu: true,
-                                 isCurrent: track.id == app.player.currentTrack?.id,
-                                 isPlaying: track.id == app.player.currentTrack?.id && app.player.state.isPlaying, liked: track.isLiked,
-                                 onTap: {
-                            play(track: track, album: album)
-                        })
-                        .equatable()
-                        .lumaSongRowMinHeight(54)
-                        .listRowBackground(Color.clear)
-                        .trackRowSeparator()
-                        // Indented so the tracks read as nested under the album header.
-                        .listRowInsets(EdgeInsets(top: 0, leading: 32, bottom: 0, trailing: 16))
-                        .trackQueueSwipeTrailing(
-                            playNext: { app.playNext([track]) },
-                            addLast: { app.addToQueue([track]) }
-                        )
+                    LazyVGrid(columns: lumaGalleryColumns(spacing: 18), spacing: 18) {
+                        ForEach(artist.sortedAlbums) { album in
+                            NavigationLink(destination: AlbumDetailView(album: album)) {
+                                LibraryAlbumCard(album: album, cardWidth: nil, subtitle: albumSubtitle(album))
+                            }
+                            .buttonStyle(.plain)
+                            .albumContextMenu(album)
+                        }
                     }
+                    .padding(.horizontal, 16)
                 }
+                .padding(.bottom, 20)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
             #if os(iOS) || os(visionOS)
             .ignoresSafeArea(.container, edges: .top)
             #endif
@@ -238,36 +229,14 @@ struct ArtistDetailView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Album Header Row
-
-    private func albumNavRow(_ album: Album) -> some View {
-        HStack(spacing: 14) {
-            ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 8, size: 56)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(album.title)
-                    .font(.system(size: 18, weight: .bold))
-                    .tracking(-0.3)
-                    .foregroundStyle(.lumaInk())
-                HStack(spacing: 6) {
-                    if let year = album.year { Text(String(year)) }
-                    Text(verbatim: "· \(CountText.songs(album.tracks.count))")
-                }
-                .font(.caption)
-                .foregroundStyle(.lumaInk(0.45))
-            }
-            Spacer()
-        }
-        .padding(.vertical, 10)
+    /// Under an artist the card's second line is the year and song count — the artist's name
+    /// would only repeat the page title.
+    private func albumSubtitle(_ album: Album) -> String {
+        let songs = CountText.songs(album.tracks.count)
+        return album.year.map { "\($0) · \(songs)" } ?? songs
     }
 
     // MARK: - Actions
-
-    private func play(track: Track, album: Album) {
-        let sorted = album.sortedTracks
-        guard let idx = sorted.firstIndex(where: { $0.id == track.id }) else { return }
-        app.queue.setQueue(sorted, startAt: idx)
-        Task { await app.player.play(track: track) }
-    }
 
     private func playAll(shuffle: Bool) {
         let all = artist.sortedAlbums.flatMap { $0.sortedTracks }
@@ -282,6 +251,7 @@ struct ArtistDetailView: View {
 
 private struct ArtistArtworkView: View {
     let albums: [Album]
+    @Environment(\.coverCornerScale) private var coverCornerScale
 
     var body: some View {
         if albums.count >= 4 {
@@ -289,16 +259,16 @@ private struct ArtistArtworkView: View {
                 let half = (geo.size.width - 2) / 2
                 VStack(spacing: 2) {
                     HStack(spacing: 2) {
-                        ArtworkView(data: albums[0].artworkData, cacheKey: albums[0].artworkCacheKey, cornerRadius: 0, size: half)
-                        ArtworkView(data: albums[1].artworkData, cacheKey: albums[1].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[0].coverData, cacheKey: albums[0].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[1].coverData, cacheKey: albums[1].artworkCacheKey, cornerRadius: 0, size: half)
                     }
                     HStack(spacing: 2) {
-                        ArtworkView(data: albums[2].artworkData, cacheKey: albums[2].artworkCacheKey, cornerRadius: 0, size: half)
-                        ArtworkView(data: albums[3].artworkData, cacheKey: albums[3].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[2].coverData, cacheKey: albums[2].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[3].coverData, cacheKey: albums[3].artworkCacheKey, cornerRadius: 0, size: half)
                     }
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 16 * coverCornerScale, style: .continuous))
         } else {
             // Single album → one cover fills the artist header. macOS caps the decode below the
             // stored ~1024px (512 stays crisp at the header's @2x backing) rather than caching a
@@ -308,7 +278,7 @@ private struct ArtistArtworkView: View {
             #else
             let fallbackMax: Int? = nil
             #endif
-            ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.artworkCacheKey,
+            ArtworkView(data: albums.first?.coverData, cacheKey: albums.first?.artworkCacheKey,
                         cornerRadius: 16, size: nil, maxPixel: fallbackMax)
                 .aspectRatio(1, contentMode: .fit)
         }

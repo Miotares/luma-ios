@@ -665,16 +665,6 @@
         }
       }
     },
-    "Auf Lyrics aus der Datei zurücksetzen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reset to the lyrics in the file"
-          }
-        }
-      }
-    },
     "Aus" : {
       "localizations" : {
         "en" : {
@@ -1235,16 +1225,6 @@
         }
       }
     },
-    "Für diesen Titel sind keine Lyrics hinterlegt." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "There are no lyrics for this track."
-          }
-        }
-      }
-    },
     "Gelikte Songs" : {
 
     },
@@ -1784,46 +1764,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lyrics"
-          }
-        }
-      }
-    },
-    "Lyrics bearbeiten" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Edit lyrics"
-          }
-        }
-      }
-    },
-    "Lyrics entfernen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Remove lyrics"
-          }
-        }
-      }
-    },
-    "Lyrics hier eingeben oder einfügen …" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Type or paste lyrics here…"
-          }
-        }
-      }
-    },
-    "Lyrics hinzufügen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Add lyrics"
           }
         }
       }
@@ -3013,26 +2953,6 @@
         }
       }
     },
-    "Lyrics anzeigen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Show lyrics"
-          }
-        }
-      }
-    },
-    "Zeigt im Player den Lyrics-Button. Ausgeschaltet bleibt der Player ohne Lyrics." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Shows the Lyrics button in the player. When off, the player has no lyrics."
-          }
-        }
-      }
-    },
     "Wischgeste" : {
       "localizations" : {
         "en" : {
@@ -3059,6 +2979,116 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "What happens when you swipe a track all the way to the left. A short swipe still shows both actions."
+          }
+        }
+      }
+    },
+    "Dieser Titel enthält keine Lyrics." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This track has no lyrics."
+          }
+        }
+      }
+    },
+    "Album oder Künstler anzeigen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show album or artist"
+          }
+        }
+      }
+    },
+    "Cover-Ecken" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cover corners"
+          }
+        }
+      }
+    },
+    "Abgerundet" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rounded"
+          }
+        }
+      }
+    },
+    "Eckig" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Square"
+          }
+        }
+      }
+    },
+    "Eckig zeigt Cover vollständig – sinnvoll, wenn ein Cover einen Rahmen hat, den runde Ecken abschneiden." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Square shows covers in full – useful when a cover has a border that rounded corners would cut off."
+          }
+        }
+      }
+    },
+    "Ziehe eine Playlist am Griff, um die Reihenfolge auf der Startseite zu ändern." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag a playlist by its handle to change the order on the home screen."
+          }
+        }
+      }
+    },
+    "Playlists anheften" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pin playlists"
+          }
+        }
+      }
+    },
+    "Weitere Playlists" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "More playlists"
+          }
+        }
+      }
+    },
+    "Nicht mehr anheften" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unpin"
+          }
+        }
+      }
+    },
+    "Anheften" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pin"
           }
         }
       }

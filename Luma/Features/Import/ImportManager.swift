@@ -368,12 +368,12 @@ final class ImportManager {
             year: metadata.year
         )
 
-        // Store the cover (downscaled ~1024px thumbnail) inline. We deliberately do NOT also keep a
-        // full-resolution copy on disk: nothing reads it (every surface, incl. the full-screen
-        // player, caps decoding at ~1024px = the inline thumbnail). See LegacyArtworkCleanup.
+        // Store the cover as a downscaled ~1024px thumbnail (a file — see ArtworkStorage). We
+        // deliberately do NOT also keep the full-resolution original: nothing reads it (every
+        // surface, incl. the full-screen player, caps decoding at ~1024px).
         if let cover = metadata.artworkThumbnail ?? metadata.artworkData {
             if metadata.hasAlbumTag {
-                if album.artworkData == nil { album.artworkData = cover }
+                if !album.hasCover { album.setCover(cover) }
             } else {
                 // No album tag → the track sits in the catch-all "Unknown Album" with unrelated
                 // songs. Its cover is its own, not that album's (which used to make every

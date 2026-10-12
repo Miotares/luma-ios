@@ -166,7 +166,7 @@ actor LibraryScanWorker {
         // "Unknown Album" with unrelated songs (mirrors ImportManager.insertParsed).
         if let cover = md.artworkThumbnail ?? md.artworkData {
             if md.hasAlbumTag {
-                if album.artworkData == nil { album.artworkData = cover }
+                if !album.hasCover { album.setCover(cover) }
             } else {
                 track.setCustomArtwork(cover)
             }
@@ -197,8 +197,8 @@ actor LibraryScanWorker {
             // Same album, but a re-tagged file (changed mod-date/size routes here, not insert) may
             // have ADDED embedded cover art the album previously lacked. Backfill it so the album
             // isn't left blank after a rescan.
-            if let album = track.album, album.artworkData == nil, let raw = md.artworkData {
-                album.artworkData = md.artworkThumbnail ?? raw
+            if let album = track.album, !album.hasCover, let raw = md.artworkData {
+                album.setCover(md.artworkThumbnail ?? raw)
             }
             return
         }
@@ -209,8 +209,8 @@ actor LibraryScanWorker {
         let album = findOrCreateAlbum(title: md.albumTitle, artistName: albumArtistName,
                                       artist: artist, year: md.year, genre: md.genre, cache: &albumCache)
         // A freshly-created (or still-artless) target album gets its cover too — mirrors insert.
-        if album.artworkData == nil, let raw = md.artworkData {
-            album.artworkData = md.artworkThumbnail ?? raw
+        if !album.hasCover, let raw = md.artworkData {
+            album.setCover(md.artworkThumbnail ?? raw)
         }
         oldAlbum?.tracks.removeAll { $0.id == track.id }
         oldArtist?.tracks.removeAll { $0.id == track.id }
@@ -222,6 +222,7 @@ actor LibraryScanWorker {
 
         if let oldAlbum, oldAlbum.id != album.id, oldAlbum.tracks.isEmpty {
             albumCache[Self.albumKey(oldAlbum.title, oldAlbum.artistName)] = nil
+            ArtworkStorage.remove(ArtworkStorage.albumURL(oldAlbum.id))
             modelContext.delete(oldAlbum)
         }
         if let oldArtist, oldArtist.id != artist.id, oldArtist.tracks.isEmpty, oldArtist.albums.isEmpty {
@@ -233,10 +234,12 @@ actor LibraryScanWorker {
     /// Removes a track's library entry (and now-empty album/artist). NEVER deletes the
     /// source file — referenced tracks have no `localFileName`.
     private func deleteTrack(_ track: Track) {
+        if track.hasCustomArtwork { ArtworkStorage.remove(ArtworkStorage.trackURL(track.id)) }
         if let album = track.album {
             album.tracks.removeAll { $0.id == track.id }
             if album.tracks.isEmpty {
                 album.artist?.albums.removeAll { $0.id == album.id }
+                ArtworkStorage.remove(ArtworkStorage.albumURL(album.id))
                 modelContext.delete(album)
             }
         }

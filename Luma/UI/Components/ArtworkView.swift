@@ -69,7 +69,7 @@ private actor ArtworkDecodeLimiter {
 struct ArtworkView: View {
     /// The bytes are provided lazily (autoclosure) so a row NEVER faults the SwiftData artwork
     /// blob just to pass it in — the provider is called only on a cache miss, inside `.task`
-    /// (off the scroll-build frame). Call sites are unchanged: `ArtworkView(data: album.artworkData)`.
+    /// (off the scroll-build frame). Call sites are unchanged: `ArtworkView(data: album.coverData)`.
     private let dataProvider: () -> Data?
     var cacheKey: String?
     var cornerRadius: CGFloat = 8
@@ -81,6 +81,14 @@ struct ArtworkView: View {
     var maxPixel: Int? = nil
 
     @State private var image: Image?
+    @Environment(\.coverCornerScale) private var coverCornerScale
+
+    /// Square when the "Cover-Ecken" setting says so — except a fully round picture (an artist
+    /// avatar), which is not a cover and stays round.
+    private var effectiveCornerRadius: CGFloat {
+        if let size, cornerRadius >= size / 2 { return cornerRadius }
+        return cornerRadius * coverCornerScale
+    }
 
     init(data: @autoclosure @escaping () -> Data?, cacheKey: String? = nil,
          cornerRadius: CGFloat = 8, size: CGFloat? = nil, maxPixel: Int? = nil) {
@@ -117,7 +125,7 @@ struct ArtworkView: View {
                 }
             }
             .clipped()
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: effectiveCornerRadius, style: .continuous))
         // Resolve off the row-build path: check the image cache by the cheap key; only call the
         // data provider (which may fault the SwiftData blob) on a miss, then DECODE AT THE
         // DISPLAY SIZE off-main. Decoding the full ~1024px cover for a 44pt row saturated the CPU
