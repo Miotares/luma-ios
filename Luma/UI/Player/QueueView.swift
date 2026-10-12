@@ -288,10 +288,13 @@ struct QueueView: View {
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
     }
 
-    /// iOS swipe-to-remove path (by identity). macOS removes by position via `removeUpNext(at:)`,
-    /// which handles a queue that legitimately repeats a track.
+    /// iOS swipe-to-remove path (by identity → the first up-next slot holding that track). macOS
+    /// removes by position via `removeUpNext(at:)`.
     private func removeFromQueue(_ track: Track) {
-        app.queue.removeTrack(id: track.id)
+        // One up-next slot only. (This used to remove the song from the WHOLE queue — and when the
+        // playing song was also queued again, that pulled the playing song out from under the
+        // player, leaving the queue pointing at a different track than the one being heard.)
+        app.queue.removeUpNext(id: track.id)
         app.savePlaybackState()
     }
 }

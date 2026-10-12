@@ -4,9 +4,21 @@ import Foundation
 // a swipe, a selection bar). Views call these instead of the queue/repository directly so every
 // entry point confirms with the same toast.
 extension AppContainer {
+    /// With nothing playing (fresh start, or the queue ran out and the player closed) there is no
+    /// queue to add to: the tracks would sit in an invisible list and be thrown away by the next
+    /// song the user taps — while the toast claimed they were queued. Start playing them instead.
+    private func startPlaybackIfIdle(with tracks: [Track]) -> Bool {
+        guard !player.isActive else { return false }
+        queue.setQueue(tracks, startAt: 0)
+        Task { await player.play(track: tracks[0]) }
+        toast.show(String(localized: "Wiedergabe gestartet"), systemImage: "play.fill")
+        return true
+    }
+
     func playNext(_ tracks: [Track]) {
-        guard !tracks.isEmpty else { return }
+        guard !tracks.isEmpty, !startPlaybackIfIdle(with: tracks) else { return }
         queue.playNext(tracks)
+        savePlaybackState()   // the changed queue should survive a relaunch right away
         toast.show(
             tracks.count == 1
                 ? String(localized: "Wird als Nächstes gespielt")
@@ -16,8 +28,9 @@ extension AppContainer {
     }
 
     func addToQueue(_ tracks: [Track]) {
-        guard !tracks.isEmpty else { return }
+        guard !tracks.isEmpty, !startPlaybackIfIdle(with: tracks) else { return }
         queue.append(tracks)
+        savePlaybackState()
         toast.show(
             tracks.count == 1
                 ? String(localized: "Zur Warteschlange hinzugefügt")

@@ -793,7 +793,7 @@ final class AudioPlayer {
             // the pending delta would be lost (and mis-attributed to the next track). This is
             // the only track-advance path that doesn't route through startPlayback's flush.
             flushListen()
-            q.advanceIndexForCrossfade()
+            q.advanceIndexForCrossfade(to: next.track)
             currentTrack = next.track
             currentDecoded = next.decoded
             clearPreload()
@@ -922,6 +922,12 @@ final class AudioPlayer {
             isCrossfading = false
             return
         }
+        // The queue may have changed while the file was being opened (play next, reorder, shuffle):
+        // fade only into what is STILL the next track — the next tick starts over with the new one.
+        guard crossfadeNextTrack()?.id == track.id else {
+            isCrossfading = false
+            return
+        }
         flushListen()
         cancelGainRamp()
         let incomingGain = normalizationGain(for: track)
@@ -963,7 +969,7 @@ final class AudioPlayer {
         sessionListened = 0
         playRecorded = false
         anchorPlayhead(at: 0)
-        queue?.advanceIndexForCrossfade()
+        queue?.advanceIndexForCrossfade(to: track)
         prioritizeLoudness(startingWith: track)
         nowPlayingUpdate()
 

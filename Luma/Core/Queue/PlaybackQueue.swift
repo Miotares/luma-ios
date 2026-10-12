@@ -47,9 +47,14 @@ final class PlaybackQueue {
 
     // MARK: - Queue Operations
 
-    func setQueue(_ tracks: [Track], startAt index: Int = 0, shuffle: Bool? = nil) {
+    /// Starts a new queue. `shuffle` is always explicit: tapping a song or "Abspielen" plays the
+    /// list in its order from there, only "Shuffle" starts it mixed. (It used to be optional and
+    /// INHERIT the last mode on a song tap — so after one use of a Shuffle button, tapping track 1
+    /// of an album anywhere in the app played that album in random order, with nothing on the page
+    /// saying why.) The shuffle switch in the player still re-mixes the queue that is playing.
+    func setQueue(_ tracks: [Track], startAt index: Int = 0, shuffle: Bool = false) {
         originalOrder = tracks
-        if let shuffle { shuffleMode = shuffle ? .on : .off }
+        shuffleMode = shuffle ? .on : .off
         if shuffleMode == .on {
             items = shuffled(keeping: tracks[safe: index])
             currentIndex = 0
@@ -62,6 +67,9 @@ final class PlaybackQueue {
     func append(_ tracks: [Track]) {
         originalOrder.append(contentsOf: tracks)
         items.append(contentsOf: tracks)
+        // Appending to the LAST track changes what comes next under "repeat all" (it was the
+        // first track, now it is the appended one) — drop a gapless preload of the old one.
+        player?.invalidatePreload()
     }
 
     func playNext(_ tracks: [Track]) {
@@ -133,13 +141,16 @@ final class PlaybackQueue {
     @discardableResult
     func removeTrack(id: UUID) -> Bool {
         let wasCurrent = currentTrack?.id == id
-        let keepID = wasCurrent ? nil : currentTrack?.id
+        // The current track keeps its SLOT: shift the index by what was removed in front of it.
+        // (Looking the current track up by id afterwards jumped to an earlier slot when the queue
+        // holds the same song twice.)
+        let removedBefore = items.prefix(max(currentIndex, 0)).filter { $0.id == id }.count
         items.removeAll { $0.id == id }
         originalOrder.removeAll { $0.id == id }
-        if let keepID {
-            currentIndex = items.firstIndex { $0.id == keepID } ?? currentIndex
+        if wasCurrent {
+            currentIndex = min(currentIndex - removedBefore, items.count - 1)
         } else {
-            currentIndex = min(currentIndex, items.count - 1)
+            currentIndex -= removedBefore
         }
         // The immediate next track may have just been removed — drop any stale gapless preload of
         // it (mirrors every other queue mutation). Harmless when the removed track wasn't preloaded.
@@ -149,17 +160,33 @@ final class PlaybackQueue {
 
     // MARK: - Playback Navigation
 
-    /// Moves the current index forward without (re)starting playback — the AudioPlayer
-    /// has already begun the next track as part of a crossfade.
-    func advanceIndexForCrossfade() {
+    /// Moves the current index to `track` without (re)starting playback — the AudioPlayer has
+    /// already begun it as part of a gapless hand-over or a crossfade. Normally that is simply the
+    /// next slot. But the player picked the track a few seconds earlier; should the queue have
+    /// changed in a way that slipped past `invalidatePreload`, the index follows the AUDIO (the
+    /// nearest slot holding that track) instead of pointing at a song that isn't the one playing.
+    func advanceIndexForCrossfade(to track: Track) {
+        guard repeatMode != .one, !items.isEmpty else { return }
+        let expected: Int?
         switch repeatMode {
-        case .one:
-            break
-        case .all:
-            currentIndex = (currentIndex + 1) % max(items.count, 1)
-        case .off:
-            if currentIndex < items.count - 1 { currentIndex += 1 }
+        case .all: expected = (currentIndex + 1) % items.count
+        default:   expected = currentIndex < items.count - 1 ? currentIndex + 1 : nil
         }
+        if let expected, items[expected].id == track.id {
+            currentIndex = expected
+        } else if let found = nextIndex(of: track.id) {
+            currentIndex = found
+        } else if let expected {
+            currentIndex = expected
+        }
+    }
+
+    /// The slot holding `id` that comes next in playing order: after the current one first, then
+    /// (wrapping) before it. A queue can hold the same song more than once.
+    private func nextIndex(of id: UUID) -> Int? {
+        let start = currentIndex + 1
+        if start < items.count, let ahead = items[start...].firstIndex(where: { $0.id == id }) { return ahead }
+        return items.firstIndex { $0.id == id }
     }
 
     func advance() async {
@@ -168,8 +195,17 @@ final class PlaybackQueue {
         defer { isSkipping = false }
         switch repeatMode {
         case .one:
-            await player?.seek(to: 0)
-            player?.resume()
+            // "Repeat one" repeats a track that ENDS (the player does that itself and never comes
+            // through here). A skip the user asked for moves on — it used to restart the same song,
+            // so the Next button did nothing but rewind. Only at the very end, where there is
+            // nothing to move on to, does it start the track over.
+            if currentIndex < items.count - 1 {
+                currentIndex += 1
+                await playCurrentTrack()
+            } else {
+                await player?.seek(to: 0)
+                player?.resume()
+            }
         case .all:
             currentIndex = (currentIndex + 1) % max(items.count, 1)
             await playCurrentTrack()
@@ -210,6 +246,10 @@ final class PlaybackQueue {
         } else if currentIndex > 0 {
             currentIndex -= 1
             await playCurrentTrack()
+        } else if repeatMode == .all, items.count > 1 {
+            // "Repeat all" wraps forwards from the last track to the first — so backwards too.
+            currentIndex = items.count - 1
+            await playCurrentTrack()
         }
     }
 
@@ -219,11 +259,20 @@ final class PlaybackQueue {
         await playCurrentTrack()
     }
 
-    /// Plays a track by identity — its position is resolved on the spot. Used by the queue
-    /// view, where reordering means rows are addressed by value rather than a stable index.
+    /// Plays an UP-NEXT track by identity — its position is resolved on the spot. Used by the
+    /// queue view, where reordering means rows are addressed by value rather than a stable index.
+    /// Looks AHEAD of the current track first: when the same song also sits in the played part of
+    /// the queue, a tap on its up-next row must not jump back there.
     func play(_ track: Track) async {
-        guard let idx = items.firstIndex(where: { $0.id == track.id }) else { return }
+        guard let idx = nextIndex(of: track.id) else { return }
         await play(at: idx)
+    }
+
+    /// Removes ONE up-next occurrence of `id` (the first). The played part of the queue and the
+    /// current track stay — unlike `removeTrack(id:)`, which is for a song deleted from the library.
+    func removeUpNext(id: UUID) {
+        guard let offset = upNext.firstIndex(where: { $0.id == id }) else { return }
+        removeUpNext(at: offset)
     }
 
     // MARK: - Shuffle / Repeat
