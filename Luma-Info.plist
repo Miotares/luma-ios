@@ -37,6 +37,25 @@
 		<string>audio</string>
 	</array>
 
+	<!-- "Open in Luma" / share sheet: Luma is offered for audio files in Files, Safari downloads,
+	     Mail, messengers … Rank "Alternate" so it never takes over as the default audio handler.
+	     The file is then imported like any other (LumaApp.onOpenURL → ImportManager). -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Audio</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.audio</string>
+			</array>
+		</dict>
+	</array>
+
 	<!-- File sharing via Files app / Finder -->
 	<key>UIFileSharingEnabled</key>
 	<true/>

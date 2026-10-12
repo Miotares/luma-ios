@@ -75,8 +75,10 @@ final class AppContainer {
 
         // After a music import, re-link any playlist placeholders to the new tracks.
         importManager.onImportFinished = { [weak self] in
-            self?.library.relinkPlaylistPlaceholders()
-            self?.loudness.enqueueMissing()   // measure the new tracks' loudness in the background
+            guard let self else { return }
+            self.library.relinkPlaylistPlaceholders()
+            self.loudness.enqueueMissing()   // measure the new tracks' loudness in the background
+            self.announceImportResult()
         }
 
         // When a track is deleted: if it was playing, tear down playback so the mini-player

@@ -21,11 +21,15 @@ final class NowPlayingManager {
     /// rebuild it (and doesn't momentarily reset elapsed to 0 → the lock-screen scrubber
     /// jumping to 0 and snapping back).
     private var currentTrackID: UUID?
+    /// Cover shown for that track, so replacing the cover of the playing track refreshes it too.
+    private var currentArtworkKey: String?
 
     func update(track: Track, isPlaying: Bool, elapsed: TimeInterval, duration: TimeInterval) {
         // Rebuild the (expensive) metadata + artwork ONLY when the track actually changes.
-        if track.id != currentTrackID {
+        let artworkKey = track.artworkCacheKey
+        if track.id != currentTrackID || artworkKey != currentArtworkKey {
             currentTrackID = track.id
+            currentArtworkKey = artworkKey
             var info: [String: Any] = [
                 MPMediaItemPropertyTitle: track.title,
                 MPMediaItemPropertyArtist: track.artistName,
@@ -36,7 +40,7 @@ final class NowPlayingManager {
                 MPMediaItemPropertyPlaybackDuration: duration > 0 ? duration : track.duration,
                 MPNowPlayingInfoPropertyDefaultPlaybackRate: 1.0,
             ]
-            if let artworkData = track.album?.artworkData {
+            if let artworkData = track.resolvedArtworkData() {
                 info[MPMediaItemPropertyArtwork] = makeArtwork(from: artworkData)
             }
             self.info = info
@@ -55,6 +59,7 @@ final class NowPlayingManager {
 
     func clear() {
         currentTrackID = nil
+        currentArtworkKey = nil
         info = [:]
         center.nowPlayingInfo = nil
         center.playbackState = .stopped

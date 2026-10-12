@@ -256,6 +256,27 @@ struct MacRootView: View {
         // via lumaScrollClearance; this overlay reserves no layout space of its own.
         .overlay(alignment: .bottomLeading) { MacPillHost(metrics: metrics) }
         .lumaToastHost()
+        // Drop a folder from Finder to add it as a music folder. (Loose files aren't accepted: the
+        // macOS library references watched folders in place, and a rescan drops any track that
+        // lives outside one.)
+        .dropDestination(for: URL.self) { urls, _ in
+            let folders = urls.filter {
+                $0.isFileURL && ((try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false)
+            }
+            guard !folders.isEmpty else {
+                app.toast.show(String(localized: "Ordner ablegen, um ihn hinzuzufügen"), systemImage: "folder")
+                return false
+            }
+            for folder in folders { app.libraryFolders.add(folder) }
+            app.rescan()
+            app.toast.show(
+                folders.count == 1
+                    ? String(localized: "Musikordner hinzugefügt")
+                    : String(localized: "\(folders.count) Musikordner hinzugefügt"),
+                systemImage: "folder.badge.plus"
+            )
+            return true
+        }
         // Queue toggles from the now-playing bar, the ⌥⌘Q shortcut, and per-view header buttons.
         .environment(\.openNowPlaying) { nav.showingQueue.toggle() }
         .inspector(isPresented: $nav.showingQueue) {

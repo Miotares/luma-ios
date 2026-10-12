@@ -449,12 +449,12 @@ struct PlaylistArtworkView: View {
                 let half = (geo.size.width - 2) / 2
                 VStack(spacing: 2) {
                     HStack(spacing: 2) {
-                        ArtworkView(data: albums[0].artworkData, cacheKey: albums[0].id.uuidString, cornerRadius: 0, size: half)
-                        ArtworkView(data: albums[1].artworkData, cacheKey: albums[1].id.uuidString, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[0].artworkData, cacheKey: albums[0].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[1].artworkData, cacheKey: albums[1].artworkCacheKey, cornerRadius: 0, size: half)
                     }
                     HStack(spacing: 2) {
-                        ArtworkView(data: albums[2].artworkData, cacheKey: albums[2].id.uuidString, cornerRadius: 0, size: half)
-                        ArtworkView(data: albums[3].artworkData, cacheKey: albums[3].id.uuidString, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[2].artworkData, cacheKey: albums[2].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[3].artworkData, cacheKey: albums[3].artworkCacheKey, cornerRadius: 0, size: half)
                     }
                 }
             }
@@ -470,7 +470,7 @@ struct PlaylistArtworkView: View {
             #else
             let fallbackMax: Int? = nil
             #endif
-            ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.id.uuidString,
+            ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.artworkCacheKey,
                         cornerRadius: cornerRadius, size: nil, maxPixel: fallbackMax)
                 .aspectRatio(1, contentMode: .fit)
         }

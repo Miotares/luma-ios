@@ -43,6 +43,21 @@ extension AppContainer {
         }
     }
 
+    /// Confirms a finished import where the import sheet isn't visible to do it (closed while a
+    /// long import ran, or the files came in via "Open in Luma" / drag & drop).
+    func announceImportResult() {
+        guard !importManager.isPresentingUI, let report = importManager.lastReport else { return }
+        if report.imported > 0 {
+            toast.show(String(localized: "\(report.imported) Titel importiert"), systemImage: "checkmark")
+        } else if !report.failures.isEmpty {
+            toast.show(String(localized: "Import fehlgeschlagen"), systemImage: "exclamationmark.triangle")
+        } else if report.unsupported > 0 {
+            toast.show(String(localized: "Format nicht unterstützt"), systemImage: "exclamationmark.triangle")
+        } else if report.alreadyPresent > 0 {
+            toast.show(String(localized: "Bereits in der Mediathek"), systemImage: "checkmark")
+        }
+    }
+
     /// Bulk like from a multi-selection. (A single like needs no toast — the heart is the feedback.)
     func like(_ tracks: [Track]) {
         guard !tracks.isEmpty, let changed = try? library.setLiked(tracks, liked: true) else { return }

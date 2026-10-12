@@ -2701,6 +2701,216 @@
           }
         }
       }
+    },
+    "%lld Titel importiert" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tracks imported"
+          }
+        }
+      }
+    },
+    "Import fehlgeschlagen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import failed"
+          }
+        }
+      }
+    },
+    "Format nicht unterstützt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Format not supported"
+          }
+        }
+      }
+    },
+    "Bereits in der Mediathek" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already in your library"
+          }
+        }
+      }
+    },
+    "Import abbrechen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel import"
+          }
+        }
+      }
+    },
+    "Import abgebrochen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import cancelled"
+          }
+        }
+      }
+    },
+    "%lld bereits vorhanden" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld already in your library"
+          }
+        }
+      }
+    },
+    "%lld nicht unterstützt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld not supported"
+          }
+        }
+      }
+    },
+    "%lld fehlgeschlagen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld failed"
+          }
+        }
+      }
+    },
+    "Import wird vorbereitet …" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing import…"
+          }
+        }
+      }
+    },
+    "Importiere %lld / %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importing %1$lld / %2$lld"
+          }
+        }
+      }
+    },
+    "Die Datei ist beschädigt oder kein lesbares Audioformat." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The file is damaged or not a readable audio format."
+          }
+        }
+      }
+    },
+    "Aus Fotos wählen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose from Photos"
+          }
+        }
+      }
+    },
+    "Aus Dateien wählen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose from Files"
+          }
+        }
+      }
+    },
+    "Änderung verwerfen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discard change"
+          }
+        }
+      }
+    },
+    "Eigenes Cover entfernen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove custom cover"
+          }
+        }
+      }
+    },
+    "Cover entfernen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove cover"
+          }
+        }
+      }
+    },
+    "Das Cover gilt nur für diesen Titel. Das Album-Cover änderst du in den Albuminformationen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This cover applies to this track only. Change the album cover in the album info."
+          }
+        }
+      }
+    },
+    "Ordner ablegen, um ihn hinzuzufügen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drop a folder to add it"
+          }
+        }
+      }
+    },
+    "Musikordner hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music folder added"
+          }
+        }
+      }
+    },
+    "%lld Musikordner hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld music folders added"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

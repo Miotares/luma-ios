@@ -147,7 +147,7 @@ struct StatisticsView: View {
                     .foregroundStyle(rank <= 3 ? .lumaInk() : Color.lumaInk(0.4))
                     .frame(width: 24, alignment: .center)
 
-                ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 6, size: 44)
+                ArtworkView(data: track.resolvedArtworkData(), cacheKey: track.artworkCacheKey, cornerRadius: 6, size: 44)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(track.title)

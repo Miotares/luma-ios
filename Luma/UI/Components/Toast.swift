@@ -40,6 +40,10 @@ private struct ToastHost: ViewModifier {
     @Environment(AppContainer.self) private var app
     let forceDark: Bool
 
+    private var showsImportProgress: Bool {
+        app.importManager.isImporting && !app.importManager.isPresentingUI
+    }
+
     func body(content: Content) -> some View {
         content.overlay(alignment: .top) {
             ZStack {
@@ -47,11 +51,17 @@ private struct ToastHost: ViewModifier {
                     ToastCapsule(toast: toast, forceDark: forceDark)
                         .id(toast.id)
                         .transition(.move(edge: .top).combined(with: .opacity))
+                } else if showsImportProgress {
+                    // An import running in the background (sheet closed, "Open in Luma", drop)
+                    // stays visible here until it's done.
+                    ImportProgressCapsule(forceDark: forceDark)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
             }
             .padding(.top, 2)
             .padding(.horizontal, 24)
             .animation(.smooth(duration: 0.28), value: app.toast.current)
+            .animation(.smooth(duration: 0.28), value: showsImportProgress)
             // Purely informational — never swallow a tap meant for the header underneath.
             .allowsHitTesting(false)
         }
@@ -77,5 +87,30 @@ private struct ToastCapsule: View {
         .glassEffect(.regular, in: .capsule)
         .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
         .accessibilityHidden(true)   // already announced by ToastCenter.show
+    }
+}
+
+/// Live "Importiere 120 / 900" pill. Its own view so the per-file count re-renders only this.
+private struct ImportProgressCapsule: View {
+    @Environment(AppContainer.self) private var app
+    let forceDark: Bool
+
+    var body: some View {
+        let manager = app.importManager
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text(manager.isScanning || manager.totalCount == 0
+                 ? String(localized: "Import wird vorbereitet …")
+                 : String(localized: "Importiere \(manager.importedCount) / \(manager.totalCount)"))
+                .font(.system(size: 14, weight: .semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+        }
+        .foregroundStyle(forceDark ? Color.white : Color.lumaInk())
+        .padding(.horizontal, 16)
+        .frame(height: 40)
+        .glassEffect(.regular, in: .capsule)
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
     }
 }

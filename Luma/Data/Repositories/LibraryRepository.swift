@@ -121,9 +121,13 @@ final class LibraryRepository {
             // Don't inherit the catch-all "Unknown Album" cover — it belongs to whichever file
             // happened to be imported first, not to this track's real album.
             relinkTrackAlbumAndArtist(track, groupingArtist: metadata.albumArtistName, inheritArtwork: false)
-            if let album = track.album, album.artworkData == nil,
-               let cover = metadata.artworkThumbnail ?? metadata.artworkData {
-                album.artworkData = cover
+            if let cover = metadata.artworkThumbnail ?? metadata.artworkData {
+                if metadata.hasAlbumTag {
+                    if let album = track.album, album.artworkData == nil { album.artworkData = cover }
+                } else if !track.hasCustomArtwork {
+                    // Untagged: the embedded cover is this track's own, not the catch-all album's.
+                    track.setCustomArtwork(cover)
+                }
             }
             // Keep the denormalized playlist metadata in step (via the track's own entries — safe).
             for entry in track.playlistEntries {
@@ -186,6 +190,19 @@ final class LibraryRepository {
         track.genre = (trimmedGenre?.isEmpty ?? true) ? nil : trimmedGenre
         // Move the track to the album/artist matching its edited strings — see relink helper.
         relinkTrackAlbumAndArtist(track)
+        try context.save()
+    }
+
+    /// Sets (or, with nil, removes) a track's own cover. `data` is already downscaled by the caller.
+    func updateTrackArtwork(_ track: Track, data: Data?) throws {
+        track.setCustomArtwork(data)
+        try context.save()
+    }
+
+    /// Replaces (or, with nil, removes) an album's cover. `data` is already downscaled by the caller.
+    func updateAlbumArtwork(_ album: Album, data: Data?) throws {
+        album.artworkData = data
+        album.artworkVersion &+= 1
         try context.save()
     }
 
@@ -639,6 +656,9 @@ final class LibraryRepository {
                 keeper.listenSeconds += dup.listenSeconds
                 if let dl = dup.lastPlayedDate, dl > (keeper.lastPlayedDate ?? .distantPast) {
                     keeper.lastPlayedDate = dl
+                }
+                if !keeper.hasCustomArtwork, dup.hasCustomArtwork {
+                    keeper.setCustomArtwork(dup.artworkData)
                 }
                 if keeper.loudnessLUFS == nil {
                     keeper.loudnessLUFS = dup.loudnessLUFS

@@ -12,6 +12,9 @@ final class Album {
     // so materializing an Album / running an @Query<Album> doesn't fault the image off disk —
     // it's only read when artworkData is actually accessed.
     @Attribute(.externalStorage) var artworkData: Data?
+    /// Bumped whenever the cover is replaced in the editor, so ArtworkView's decoded-image cache
+    /// (keyed by `artworkCacheKey`) drops the old one. Defaulted → lightweight migration.
+    var artworkVersion: Int = 0
 
     @Relationship(deleteRule: .nullify)
     var tracks: [Track]
@@ -33,6 +36,11 @@ final class Album {
         self.genre = genre
         self.artworkData = nil
         self.tracks = []
+    }
+
+    /// Cheap, stable key for the decoded-image cache — changes whenever the cover is replaced.
+    var artworkCacheKey: String {
+        artworkVersion == 0 ? id.uuidString : "\(id.uuidString)-a\(artworkVersion)"
     }
 
     var sortedTracks: [Track] {

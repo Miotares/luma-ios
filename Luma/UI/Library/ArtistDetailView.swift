@@ -242,7 +242,7 @@ struct ArtistDetailView: View {
 
     private func albumNavRow(_ album: Album) -> some View {
         HStack(spacing: 14) {
-            ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 8, size: 56)
+            ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 8, size: 56)
             VStack(alignment: .leading, spacing: 4) {
                 Text(album.title)
                     .font(.system(size: 18, weight: .bold))
@@ -289,12 +289,12 @@ private struct ArtistArtworkView: View {
                 let half = (geo.size.width - 2) / 2
                 VStack(spacing: 2) {
                     HStack(spacing: 2) {
-                        ArtworkView(data: albums[0].artworkData, cacheKey: albums[0].id.uuidString, cornerRadius: 0, size: half)
-                        ArtworkView(data: albums[1].artworkData, cacheKey: albums[1].id.uuidString, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[0].artworkData, cacheKey: albums[0].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[1].artworkData, cacheKey: albums[1].artworkCacheKey, cornerRadius: 0, size: half)
                     }
                     HStack(spacing: 2) {
-                        ArtworkView(data: albums[2].artworkData, cacheKey: albums[2].id.uuidString, cornerRadius: 0, size: half)
-                        ArtworkView(data: albums[3].artworkData, cacheKey: albums[3].id.uuidString, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[2].artworkData, cacheKey: albums[2].artworkCacheKey, cornerRadius: 0, size: half)
+                        ArtworkView(data: albums[3].artworkData, cacheKey: albums[3].artworkCacheKey, cornerRadius: 0, size: half)
                     }
                 }
             }
@@ -308,7 +308,7 @@ private struct ArtistArtworkView: View {
             #else
             let fallbackMax: Int? = nil
             #endif
-            ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.id.uuidString,
+            ArtworkView(data: albums.first?.artworkData, cacheKey: albums.first?.artworkCacheKey,
                         cornerRadius: 16, size: nil, maxPixel: fallbackMax)
                 .aspectRatio(1, contentMode: .fit)
         }

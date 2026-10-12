@@ -35,6 +35,14 @@ final class Track {
     /// Optional so the SwiftData migration stays lightweight.
     var loudnessLUFS: Double?
     var loudnessPeakDB: Double?
+    /// The track's OWN cover — picked in the editor, or embedded in a file that has no album tag
+    /// (those all share the catch-all "Unknown Album", so its cover can't speak for them). Most
+    /// tracks have none and show their album's cover. External storage keeps the blob out of the
+    /// row; `hasCustomArtwork` lets a list row decide which cover applies WITHOUT faulting it.
+    @Attribute(.externalStorage) var artworkData: Data?
+    var hasCustomArtwork: Bool = false
+    /// Bumped on every cover change so ArtworkView's decoded-image cache can't show a stale one.
+    var artworkVersion: Int = 0
 
     @Relationship(deleteRule: .nullify, inverse: \Album.tracks)
     var album: Album?
@@ -115,6 +123,23 @@ final class Track {
             return URL(fileURLWithPath: filePath)
         }
         throw MediaStorage.StorageError.missingFile
+    }
+
+    /// The cover to show for this track: its own if it has one, otherwise its album's.
+    func resolvedArtworkData() -> Data? {
+        hasCustomArtwork ? (artworkData ?? album?.artworkData) : album?.artworkData
+    }
+
+    /// Cheap, stable key for the decoded-image cache — changes whenever the visible cover does.
+    var artworkCacheKey: String {
+        hasCustomArtwork ? "\(id.uuidString)-t\(artworkVersion)" : (album?.artworkCacheKey ?? id.uuidString)
+    }
+
+    /// Sets (or, with nil, removes) the track's own cover.
+    func setCustomArtwork(_ data: Data?) {
+        artworkData = data
+        hasCustomArtwork = data != nil
+        artworkVersion &+= 1
     }
 
     /// True when the track has a local copy (no external source needed).

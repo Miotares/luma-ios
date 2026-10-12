@@ -328,7 +328,7 @@ struct AlbumDetailView: View {
     #if os(macOS)
     private var macAlbumHeader: some View {
         HStack(alignment: .bottom, spacing: 28) {
-            ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 12, size: 220)
+            ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 12, size: 220)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .strokeBorder(.lumaInk(0.08), lineWidth: 0.5)
@@ -380,7 +380,7 @@ struct AlbumDetailView: View {
         VStack(spacing: 0) {
             // Artwork — fixed square (matches mockup `size={210}`); a flexible
             // size inside the vertical ScrollView would grow unbounded.
-            ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 20, size: 210)
+            ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 20, size: 210)
                 .overlay(
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .strokeBorder(.lumaInk(0.07), lineWidth: 0.5)

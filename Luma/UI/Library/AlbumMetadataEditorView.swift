@@ -9,14 +9,21 @@ struct AlbumMetadataEditorView: View {
     @State private var artist = ""
     @State private var year = ""
     @State private var genre = ""
+    @State private var artworkChange: ArtworkChange = .none
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 14, size: 120)
-                        .shadow(color: .black.opacity(0.5), radius: 16, y: 8)
-                        .padding(.top, 8)
+                    ArtworkPickerControl(
+                        current: { album.artworkData },
+                        currentKey: album.artworkCacheKey,
+                        canRemove: album.artworkData != nil,
+                        removeLabel: "Cover entfernen",
+                        change: $artworkChange
+                    )
+                    .shadow(color: .black.opacity(0.5), radius: 16, y: 8)
+                    .padding(.top, 8)
 
                     VStack(spacing: 12) {
                         field("Albumtitel", text: $title)
@@ -66,6 +73,7 @@ struct AlbumMetadataEditorView: View {
             || artist != album.artistName
             || year != (album.year.map(String.init) ?? "")
             || genre != (album.genre ?? "")
+            || artworkChange != .none
     }
 
     private func field(_ label: LocalizedStringKey, text: Binding<String>, numeric: Bool = false) -> some View {
@@ -100,6 +108,16 @@ struct AlbumMetadataEditorView: View {
             year: Int(year),
             genre: genre
         )
+        switch artworkChange {
+        case .none: break
+        case .set(let data): try? app.library.updateAlbumArtwork(album, data: data)
+        case .remove: try? app.library.updateAlbumArtwork(album, data: nil)
+        }
+        if artworkChange != .none {
+            // The player derives its background colours from the cover — drop the cached palette.
+            let id = album.id
+            Task { await PaletteExtractor.shared.invalidate(for: id) }
+        }
         dismiss()
     }
 }

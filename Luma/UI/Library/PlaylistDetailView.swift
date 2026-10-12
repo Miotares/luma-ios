@@ -111,7 +111,7 @@ struct PlaylistDetailView: View {
         let r = resolved
         let trackList = r.tracks
         return ZStack(alignment: .topLeading) {
-            DetailBackground(artworkData: trackList.first?.album?.artworkData)
+            DetailBackground(artworkData: trackList.first?.resolvedArtworkData())
 
             trackListView(r, trackList)
 

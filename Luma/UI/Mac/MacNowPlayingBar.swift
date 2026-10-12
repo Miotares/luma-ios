@@ -54,7 +54,7 @@ struct MacNowPlayingBar: View {
                     // layout flex: under a narrow window it truncates so nothing overflows or hides.
                     Button(action: onOpen) {
                         HStack(spacing: 9) {
-                            ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString,
+                            ArtworkView(data: track.resolvedArtworkData(), cacheKey: track.artworkCacheKey,
                                         cornerRadius: 5, size: 34)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(track.title)

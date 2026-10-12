@@ -155,15 +155,22 @@ actor LibraryScanWorker {
         let artist = findOrCreateArtist(albumArtistName, cache: &artistCache)
         let album = findOrCreateAlbum(title: md.albumTitle, artistName: albumArtistName,
                                       artist: artist, year: md.year, genre: md.genre, cache: &albumCache)
-        if album.artworkData == nil, let raw = md.artworkData {
-            album.artworkData = md.artworkThumbnail ?? raw   // ~1024px thumbnail inline; no full-res copy (it was never read — see LegacyArtworkCleanup)
-        }
         let track = Track(
             title: md.title, artistName: md.artistName, albumTitle: md.albumTitle,
             trackNumber: md.trackNumber, discNumber: md.discNumber, duration: md.duration,
             localFileName: nil, filePath: file.path, genre: md.genre, year: md.year,
             fileModifiedDate: file.modified, fileSize: file.size
         )
+        // ~1024px thumbnail inline; no full-res copy (it was never read — see LegacyArtworkCleanup).
+        // A file without an album tag keeps its cover on the TRACK: it shares the catch-all
+        // "Unknown Album" with unrelated songs (mirrors ImportManager.insertParsed).
+        if let cover = md.artworkThumbnail ?? md.artworkData {
+            if md.hasAlbumTag {
+                if album.artworkData == nil { album.artworkData = cover }
+            } else {
+                track.setCustomArtwork(cover)
+            }
+        }
         track.album = album
         track.artist = artist
         album.tracks.append(track)

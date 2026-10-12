@@ -104,6 +104,15 @@ struct LumaApp: App {
                     }
                 }
                 .modifier(ReviewPromptPresenter(review: container.review))
+                #if os(iOS) || os(visionOS)
+                // An audio file opened in / shared to Luma from another app is imported like one
+                // picked in the import sheet. Several files arrive as several calls in quick
+                // succession — ImportManager queues them instead of dropping all but the first.
+                .onOpenURL { url in
+                    guard url.isFileURL else { return }
+                    Task { await container.importManager.importFiles([url]) }
+                }
+                #endif
         }
         #if os(macOS)
         .defaultSize(width: 1180, height: 760)

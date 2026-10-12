@@ -387,7 +387,7 @@ struct TrackRow: View, Equatable {
     private func leadingView(isCurrentTrack: Bool) -> some View {
         if showArtwork {
             ZStack {
-                ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 6, size: coverSize)
+                ArtworkView(data: track.resolvedArtworkData(), cacheKey: track.artworkCacheKey, cornerRadius: 6, size: coverSize)
                 if isCurrentTrack {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
                         .fill(.black.opacity(0.5))

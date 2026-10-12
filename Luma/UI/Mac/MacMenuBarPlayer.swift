@@ -25,7 +25,7 @@ struct MacMenuBarPlayer: View {
     private func nowPlaying(_ track: Track) -> some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
-                ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString,
+                ArtworkView(data: track.resolvedArtworkData(), cacheKey: track.artworkCacheKey,
                             cornerRadius: 8, size: 56)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(track.title)

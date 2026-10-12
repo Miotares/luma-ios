@@ -121,6 +121,11 @@ struct MetadataParser {
             }
         }
 
+        // AVFoundation doesn't expose a FLAC's PICTURE block, so read it directly.
+        if artworkData == nil, url.pathExtension.lowercased() == "flac" {
+            artworkData = FLACPicture.read(url: url)
+        }
+
         // Downscale once here, off the main actor, so the import sites can store a small (~1024px)
         // thumbnail inline on the album row (the only persisted copy).
         let artworkThumbnail = artworkData.map { ImageDownscaler.thumbnail(from: $0) }

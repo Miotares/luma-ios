@@ -24,7 +24,7 @@ struct PlayerView: View {
     var body: some View {
         mainContent
             .background {
-                ArtworkBackground(data: track?.album?.artworkData, palette: palette)
+                ArtworkBackground(data: track?.resolvedArtworkData(), palette: palette)
             }
             // The tab view's toast host sits UNDER this sheet, so the player shows its own.
             .lumaToastHost(forceDark: true)
@@ -40,9 +40,10 @@ struct PlayerView: View {
             }
             .task(id: track?.id) {
                 guard let t = track else { return }
+                // A track with its own cover gets its own palette entry (keyed by the track).
                 let p = await PaletteExtractor.shared.palette(
-                    for: t.album?.id ?? t.id,
-                    imageData: t.album?.artworkData
+                    for: t.hasCustomArtwork ? t.id : (t.album?.id ?? t.id),
+                    imageData: t.resolvedArtworkData()
                 )
                 withAnimation(.easeInOut(duration: 0.8)) { palette = p }
             }
@@ -111,7 +112,7 @@ struct PlayerView: View {
             Spacer(minLength: 28)
 
             // Artwork — responsive, scales with play state
-            ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString ?? track.id.uuidString, cornerRadius: 22, size: nil)
+            ArtworkView(data: track.resolvedArtworkData(), cacheKey: track.artworkCacheKey, cornerRadius: 22, size: nil)
                 .aspectRatio(1, contentMode: .fit)
                 .padding(.horizontal, 28)
                 .shadow(color: .black.opacity(0.75), radius: 45, y: 36)

@@ -732,7 +732,7 @@ struct ArtistListRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ArtworkView(data: artist.sortedAlbums.first?.artworkData, cacheKey: artist.sortedAlbums.first?.id.uuidString, cornerRadius: 26, size: 52)
+            ArtworkView(data: artist.sortedAlbums.first?.artworkData, cacheKey: artist.sortedAlbums.first?.artworkCacheKey, cornerRadius: 26, size: 52)
             VStack(alignment: .leading, spacing: 4) {
                 Text(artist.name).font(.body.weight(.semibold)).foregroundStyle(.lumaInk())
                 let a = artist.albumCount, t = artist.trackCount
@@ -757,7 +757,7 @@ struct AlbumListRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 8, size: 54)
+            ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 8, size: 54)
             VStack(alignment: .leading, spacing: 3) {
                 Text(album.title)
                     .font(.system(size: 16, weight: .medium))
@@ -788,11 +788,11 @@ struct LibraryAlbumCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let w = cardWidth {
-                ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 14, size: w)
+                ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 14, size: w)
             } else {
                 // size: nil → fills the grid column (responsive). maxPixel caps the DECODE at
                 // ~512px so the gallery doesn't inflate full ~1024px covers for ~150 cards.
-                ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 14, size: nil, maxPixel: 512)
+                ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 14, size: nil, maxPixel: 512)
                     .aspectRatio(1, contentMode: .fit)
                     // Cast the drop shadow from a constant rounded-rect shape behind the (opaque)
                     // cover, NOT from the image's own alpha. Same look, but the rasterizer gets a

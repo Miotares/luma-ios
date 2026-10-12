@@ -7,11 +7,9 @@ struct ImportView: View {
     @State private var showingPicker = false
     @State private var pickerContentTypes: [UTType] = []
 
-    private static let audioTypes: [UTType] = [
-        .mp3, .mpeg4Audio, .aiff, .wav,
-        UTType("public.flac") ?? .audio,
-        UTType("org.xiph.opus") ?? .audio,
-    ]
+    /// Every audio file is selectable. A format Luma can't play is reported after the import
+    /// instead of being greyed out in the picker with no explanation.
+    private static let audioTypes: [UTType] = [.audio]
 
     var body: some View {
         NavigationStack {
@@ -56,15 +54,14 @@ struct ImportView: View {
                         Text(importStatusText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        Button("Import abbrechen", role: .cancel) { app.importManager.cancel() }
+                            .font(.footnote.weight(.semibold))
+                            .padding(.top, 4)
                     }
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
                     .animation(.easeInOut, value: app.importManager.isImporting)
-                }
-
-                if let error = app.importManager.lastError {
-                    Text("Fehler: \(error)")
-                        .font(.caption)
-                        .foregroundStyle(.red)
+                } else if let report = app.importManager.lastReport {
+                    ImportReportView(report: report)
                         .padding(.horizontal, 32)
                 }
 
@@ -87,11 +84,16 @@ struct ImportView: View {
             // Auto-close once an import finishes cleanly; stay open on failure so the
             // error stays visible.
             .onChange(of: app.importManager.isImporting) { wasImporting, isImporting in
-                guard wasImporting, !isImporting,
-                      app.importManager.failedCount == 0,
-                      app.importManager.lastError == nil else { return }
+                guard wasImporting, !isImporting, let report = app.importManager.lastReport,
+                      report.isClean else { return }
+                // Nothing to read here — close and let the app-wide toast confirm the result.
                 dismiss()
+                app.importManager.isPresentingUI = false
+                app.announceImportResult()
             }
+            // While this sheet is up it shows the progress itself (see ToastHost).
+            .onAppear { app.importManager.isPresentingUI = true }
+            .onDisappear { app.importManager.isPresentingUI = false }
         }
     }
 
@@ -135,5 +137,68 @@ struct ImportView: View {
         case .failure(let error):
             print("File picker error: \(error)")
         }
+    }
+}
+
+/// Result of the last import: what was added, what was skipped and — by name — what failed.
+private struct ImportReportView: View {
+    let report: ImportManager.ImportReport
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if report.wasCancelled {
+                line("Import abgebrochen", icon: "xmark.circle", tint: .orange)
+            }
+            line("\(report.imported) importiert", icon: "checkmark.circle", tint: .green)
+            if report.alreadyPresent > 0 {
+                line("\(report.alreadyPresent) bereits vorhanden", icon: "equal.circle", tint: .secondary)
+            }
+            if report.unsupported > 0 {
+                line("\(report.unsupported) nicht unterstützt", icon: "questionmark.circle", tint: .orange)
+            }
+            if !report.failures.isEmpty {
+                line("\(report.failures.count) fehlgeschlagen", icon: "exclamationmark.circle", tint: .red)
+                Group {
+                    // A few failures fit as they are; a long list scrolls inside a fixed box.
+                    if report.failures.count <= 3 {
+                        failureList
+                    } else {
+                        ScrollView { failureList }.frame(height: 150)
+                    }
+                }
+                .background(Color.lumaInk(0.06), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(.top, 2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var failureList: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(report.failures) { failure in
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(failure.fileName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.lumaInk(0.8))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(failure.reason)
+                        .font(.caption2)
+                        .foregroundStyle(.lumaInk(0.45))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+    }
+
+    private func line(_ text: LocalizedStringKey, icon: String, tint: Color) -> some View {
+        Label {
+            Text(text).foregroundStyle(.lumaInk(0.75))
+        } icon: {
+            Image(systemName: icon).foregroundStyle(tint)
+        }
+        .font(.footnote)
     }
 }

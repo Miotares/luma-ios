@@ -11,14 +11,30 @@ struct MetadataEditorView: View {
     @State private var trackNumber = ""
     @State private var year = ""
     @State private var genre = ""
+    @State private var artworkChange: ArtworkChange = .none
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 18) {
-                    ArtworkView(data: track.album?.artworkData, cacheKey: track.album?.id.uuidString, cornerRadius: 14, size: 120)
-                        .shadow(color: .black.opacity(0.5), radius: 16, y: 8)
-                        .padding(.top, 8)
+                    // Sets this TRACK's own cover; removing it falls back to the album's.
+                    ArtworkPickerControl(
+                        current: { track.resolvedArtworkData() },
+                        currentKey: track.artworkCacheKey,
+                        fallback: { track.album?.artworkData },
+                        fallbackKey: track.album?.artworkCacheKey,
+                        canRemove: track.hasCustomArtwork,
+                        removeLabel: "Eigenes Cover entfernen",
+                        change: $artworkChange
+                    )
+                    .shadow(color: .black.opacity(0.5), radius: 16, y: 8)
+                    .padding(.top, 8)
+
+                    Text("Das Cover gilt nur für diesen Titel. Das Album-Cover änderst du in den Albuminformationen.")
+                        .font(.caption)
+                        .foregroundStyle(.lumaInk(0.35))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
 
                     VStack(spacing: 12) {
                         field("Titel", text: $title)
@@ -67,6 +83,7 @@ struct MetadataEditorView: View {
             || trackNumber != (track.trackNumber > 0 ? String(track.trackNumber) : "")
             || year != (track.year.map(String.init) ?? "")
             || genre != (track.genre ?? "")
+            || artworkChange != .none
     }
 
     private func field(_ label: LocalizedStringKey, text: Binding<String>, numeric: Bool = false) -> some View {
@@ -106,6 +123,16 @@ struct MetadataEditorView: View {
             year: Int(year),
             genre: genre
         )
+        switch artworkChange {
+        case .none: break
+        case .set(let data): try? app.library.updateTrackArtwork(track, data: data)
+        case .remove: try? app.library.updateTrackArtwork(track, data: nil)
+        }
+        if artworkChange != .none {
+            // The player derives its background colours from the cover — drop the cached palette.
+            let ids = [track.id, track.album?.id].compactMap { $0 }
+            Task { for id in ids { await PaletteExtractor.shared.invalidate(for: id) } }
+        }
         dismiss()
     }
 }

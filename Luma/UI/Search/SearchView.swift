@@ -209,7 +209,7 @@ struct SearchView: View {
                     ForEach(filteredArtists) { artist in
                         NavigationLink(value: artist) {
                             HStack(spacing: 12) {
-                                ArtworkView(data: artist.sortedAlbums.first?.artworkData, cacheKey: artist.sortedAlbums.first?.id.uuidString, cornerRadius: 22, size: 44)
+                                ArtworkView(data: artist.sortedAlbums.first?.artworkData, cacheKey: artist.sortedAlbums.first?.artworkCacheKey, cornerRadius: 22, size: 44)
                                 Text(artist.name).font(.body).foregroundStyle(.lumaInk())
                                 Spacer()
                                 Image(systemName: "chevron.right")
@@ -255,7 +255,7 @@ struct SearchView: View {
                     ForEach(filteredAlbums) { album in
                         NavigationLink(value: album) {
                             HStack(spacing: 12) {
-                                ArtworkView(data: album.artworkData, cacheKey: album.id.uuidString, cornerRadius: 8, size: 48)
+                                ArtworkView(data: album.artworkData, cacheKey: album.artworkCacheKey, cornerRadius: 8, size: 48)
                                 VStack(alignment: .leading, spacing: 3) {
                                     Text(album.title).font(.body.weight(.medium)).foregroundStyle(.lumaInk()).lineLimit(1)
                                     Text(album.artistName).font(.caption).foregroundStyle(.lumaInk(0.5))

@@ -144,6 +144,13 @@ struct MainTabView: View {
         }
         .tint(Color.lumaAccent)
         .lumaToastHost()
+        // Drag audio files or folders in from Files / another app (iPad split view, Stage Manager).
+        .dropDestination(for: URL.self) { urls, _ in
+            let files = urls.filter(\.isFileURL)
+            guard !files.isEmpty else { return false }
+            Task { await app.importManager.importFiles(files) }
+            return true
+        }
         .environment(\.openNowPlaying) { showingPlayer = true }
         .sheet(isPresented: $showingPlayer) {
             PlayerView()
