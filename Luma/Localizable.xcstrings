@@ -54,6 +54,16 @@
         }
       }
     },
+    "%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        }
+      }
+    },
     "%lld" : {
       "localizations" : {
         "en" : {
@@ -105,12 +115,32 @@
         }
       }
     },
+    "%lld bereits vorhanden" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld already in your library"
+          }
+        }
+      }
+    },
     "%lld dB" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld dB"
+          }
+        }
+      }
+    },
+    "%lld fehlgeschlagen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld failed"
           }
         }
       }
@@ -131,6 +161,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld min"
+          }
+        }
+      }
+    },
+    "%lld Musikordner hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld music folders added"
+          }
+        }
+      }
+    },
+    "%lld nicht unterstützt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld not supported"
           }
         }
       }
@@ -183,6 +233,16 @@
         }
       }
     },
+    "%lld Titel importiert" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tracks imported"
+          }
+        }
+      }
+    },
     "%lld Titel verknüpft, %lld noch nicht in der Mediathek." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -190,6 +250,46 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld tracks linked, %lld not in your library yet."
+          }
+        }
+      }
+    },
+    "%lld Titel werden als Nächstes gespielt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tracks playing next"
+          }
+        }
+      }
+    },
+    "%lld Titel zu „%@“ hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld tracks added to “%2$@”"
+          }
+        }
+      }
+    },
+    "%lld Titel zu Liked hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tracks added to Liked"
+          }
+        }
+      }
+    },
+    "%lld Titel zur Warteschlange hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld tracks added to queue"
           }
         }
       }
@@ -481,6 +581,16 @@
         }
       }
     },
+    "Änderung verwerfen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discard change"
+          }
+        }
+      }
+    },
     "Änderungen am Albuminterpret verschieben das ganze Album zu diesem Künstler." : {
       "localizations" : {
         "en" : {
@@ -555,12 +665,32 @@
         }
       }
     },
+    "Auf Lyrics aus der Datei zurücksetzen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset to the lyrics in the file"
+          }
+        }
+      }
+    },
     "Aus" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Off"
+          }
+        }
+      }
+    },
+    "Aus Dateien wählen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose from Files"
           }
         }
       }
@@ -572,6 +702,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Remove from Liked"
+          }
+        }
+      }
+    },
+    "Aus Fotos wählen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose from Photos"
           }
         }
       }
@@ -661,6 +801,36 @@
         }
       }
     },
+    "Bereits in „%@“" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already in “%@”"
+          }
+        }
+      }
+    },
+    "Bereits in der Mediathek" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already in your library"
+          }
+        }
+      }
+    },
+    "Bereits in Liked" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Already in Liked"
+          }
+        }
+      }
+    },
     "Bibliothek neu scannen" : {
       "localizations" : {
         "en" : {
@@ -722,6 +892,16 @@
         }
       }
     },
+    "Cover entfernen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove cover"
+          }
+        }
+      }
+    },
     "Cross-Fade" : {
       "localizations" : {
         "en" : {
@@ -741,6 +921,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The app icon on your Home Screen. iOS shows a one-time prompt when it changes."
+          }
+        }
+      }
+    },
+    "Das Cover gilt nur für diesen Titel. Das Album-Cover änderst du in den Albuminformationen." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This cover applies to this track only. Change the album cover in the album info."
           }
         }
       }
@@ -825,6 +1015,16 @@
         }
       }
     },
+    "Die Datei ist beschädigt oder kein lesbares Audioformat." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The file is damaged or not a readable audio format."
+          }
+        }
+      }
+    },
     "Diese Playlist ist noch leer." : {
       "localizations" : {
         "en" : {
@@ -853,6 +1053,16 @@
     },
     "Dunkel" : {
 
+    },
+    "Eigenes Cover entfernen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove custom cover"
+          }
+        }
+      }
     },
     "Einstellungen" : {
       "localizations" : {
@@ -945,6 +1155,7 @@
       }
     },
     "Fehler: %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
@@ -970,6 +1181,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Flat"
+          }
+        }
+      }
+    },
+    "Format nicht unterstützt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Format not supported"
           }
         }
       }
@@ -1010,6 +1231,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add tracks from the Files app — iCloud Drive, Dropbox, Google Drive and more. Files are copied into Luma and then available offline."
+          }
+        }
+      }
+    },
+    "Für diesen Titel sind keine Lyrics hinterlegt." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "There are no lyrics for this track."
           }
         }
       }
@@ -1091,6 +1322,16 @@
     "Hell oder dunkel — oder automatisch dem System folgen." : {
 
     },
+    "Hinzufügen fehlgeschlagen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't add"
+          }
+        }
+      }
+    },
     "Höhen" : {
       "localizations" : {
         "en" : {
@@ -1144,12 +1385,62 @@
         }
       }
     },
+    "Import abbrechen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel import"
+          }
+        }
+      }
+    },
+    "Import abgebrochen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import cancelled"
+          }
+        }
+      }
+    },
+    "Import fehlgeschlagen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import failed"
+          }
+        }
+      }
+    },
     "Import fehlgeschlagen." : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Import failed."
+          }
+        }
+      }
+    },
+    "Import wird vorbereitet …" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preparing import…"
+          }
+        }
+      }
+    },
+    "Importiere %lld / %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importing %1$lld / %2$lld"
           }
         }
       }
@@ -1277,6 +1568,16 @@
         }
       }
     },
+    "Keine Lyrics" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No lyrics"
+          }
+        }
+      }
+    },
     "Keine Musik vorhanden" : {
       "localizations" : {
         "en" : {
@@ -1384,6 +1685,16 @@
     "Lautstärke" : {
 
     },
+    "Lautstärke angleichen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Normalize volume"
+          }
+        }
+      }
+    },
     "Leere Einträge entfernen" : {
       "localizations" : {
         "en" : {
@@ -1467,12 +1778,72 @@
     "Luma öffnen" : {
 
     },
+    "Lyrics" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lyrics"
+          }
+        }
+      }
+    },
+    "Lyrics bearbeiten" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit lyrics"
+          }
+        }
+      }
+    },
+    "Lyrics entfernen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove lyrics"
+          }
+        }
+      }
+    },
+    "Lyrics hier eingeben oder einfügen …" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type or paste lyrics here…"
+          }
+        }
+      }
+    },
+    "Lyrics hinzufügen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add lyrics"
+          }
+        }
+      }
+    },
     "Mediathek" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Library"
+          }
+        }
+      }
+    },
+    "Mediathek wird analysiert – noch %lld Titel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Analyzing library – %lld tracks to go"
           }
         }
       }
@@ -1546,6 +1917,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Add Music Folder…"
+          }
+        }
+      }
+    },
+    "Musikordner hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Music folder added"
           }
         }
       }
@@ -1716,6 +2097,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "OK"
+          }
+        }
+      }
+    },
+    "Ordner ablegen, um ihn hinzuzufügen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drop a folder to add it"
           }
         }
       }
@@ -1897,6 +2288,16 @@
         }
       }
     },
+    "Schließen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Close"
+          }
+        }
+      }
+    },
     "Shuffle" : {
       "localizations" : {
         "en" : {
@@ -2024,6 +2425,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Storage"
+          }
+        }
+      }
+    },
+    "Spielt alle Titel gleich laut ab – egal, wie laut die jeweilige Datei ist." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plays every track at the same loudness, no matter how loud the file itself is."
           }
         }
       }
@@ -2445,12 +2856,32 @@
         }
       }
     },
+    "Wird als Nächstes gespielt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playing next"
+          }
+        }
+      }
+    },
     "Wird gespielt" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Now Playing"
+          }
+        }
+      }
+    },
+    "Zu „%@“ hinzugefügt" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added to “%@”"
           }
         }
       }
@@ -2559,39 +2990,6 @@
         }
       }
     },
-    "Zurück zur Mediathek" : {
-
-    },
-    "Zurücksetzen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reset"
-          }
-        }
-      }
-    },
-    "Wird als Nächstes gespielt" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Playing next"
-          }
-        }
-      }
-    },
-    "%lld Titel werden als Nächstes gespielt" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld tracks playing next"
-          }
-        }
-      }
-    },
     "Zur Warteschlange hinzugefügt" : {
       "localizations" : {
         "en" : {
@@ -2602,412 +3000,15 @@
         }
       }
     },
-    "%lld Titel zur Warteschlange hinzugefügt" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld tracks added to queue"
-          }
-        }
-      }
+    "Zurück zur Mediathek" : {
+
     },
-    "Hinzufügen fehlgeschlagen" : {
+    "Zurücksetzen" : {
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Couldn't add"
-          }
-        }
-      }
-    },
-    "Bereits in „%@“" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Already in “%@”"
-          }
-        }
-      }
-    },
-    "Zu „%@“ hinzugefügt" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Added to “%@”"
-          }
-        }
-      }
-    },
-    "%lld Titel zu „%@“ hinzugefügt" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$lld tracks added to “%2$@”"
-          }
-        }
-      }
-    },
-    "Bereits in Liked" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Already in Liked"
-          }
-        }
-      }
-    },
-    "%lld Titel zu Liked hinzugefügt" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld tracks added to Liked"
-          }
-        }
-      }
-    },
-    "Lautstärke angleichen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Normalize volume"
-          }
-        }
-      }
-    },
-    "Spielt alle Titel gleich laut ab – egal, wie laut die jeweilige Datei ist." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plays every track at the same loudness, no matter how loud the file itself is."
-          }
-        }
-      }
-    },
-    "Mediathek wird analysiert – noch %lld Titel" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Analyzing library – %lld tracks to go"
-          }
-        }
-      }
-    },
-    "%lld Titel importiert" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld tracks imported"
-          }
-        }
-      }
-    },
-    "Import fehlgeschlagen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Import failed"
-          }
-        }
-      }
-    },
-    "Format nicht unterstützt" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Format not supported"
-          }
-        }
-      }
-    },
-    "Bereits in der Mediathek" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Already in your library"
-          }
-        }
-      }
-    },
-    "Import abbrechen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cancel import"
-          }
-        }
-      }
-    },
-    "Import abgebrochen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Import cancelled"
-          }
-        }
-      }
-    },
-    "%lld bereits vorhanden" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld already in your library"
-          }
-        }
-      }
-    },
-    "%lld nicht unterstützt" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld not supported"
-          }
-        }
-      }
-    },
-    "%lld fehlgeschlagen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld failed"
-          }
-        }
-      }
-    },
-    "Import wird vorbereitet …" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Preparing import…"
-          }
-        }
-      }
-    },
-    "Importiere %lld / %lld" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Importing %1$lld / %2$lld"
-          }
-        }
-      }
-    },
-    "Die Datei ist beschädigt oder kein lesbares Audioformat." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "The file is damaged or not a readable audio format."
-          }
-        }
-      }
-    },
-    "Aus Fotos wählen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose from Photos"
-          }
-        }
-      }
-    },
-    "Aus Dateien wählen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choose from Files"
-          }
-        }
-      }
-    },
-    "Änderung verwerfen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Discard change"
-          }
-        }
-      }
-    },
-    "Eigenes Cover entfernen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Remove custom cover"
-          }
-        }
-      }
-    },
-    "Cover entfernen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Remove cover"
-          }
-        }
-      }
-    },
-    "Das Cover gilt nur für diesen Titel. Das Album-Cover änderst du in den Albuminformationen." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This cover applies to this track only. Change the album cover in the album info."
-          }
-        }
-      }
-    },
-    "Ordner ablegen, um ihn hinzuzufügen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Drop a folder to add it"
-          }
-        }
-      }
-    },
-    "Musikordner hinzugefügt" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Music folder added"
-          }
-        }
-      }
-    },
-    "%lld Musikordner hinzugefügt" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld music folders added"
-          }
-        }
-      }
-    },
-    "Lyrics" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Lyrics"
-          }
-        }
-      }
-    },
-    "Lyrics hinzufügen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Add lyrics"
-          }
-        }
-      }
-    },
-    "Lyrics bearbeiten" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Edit lyrics"
-          }
-        }
-      }
-    },
-    "Schließen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Close"
-          }
-        }
-      }
-    },
-    "Keine Lyrics" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No lyrics"
-          }
-        }
-      }
-    },
-    "Für diesen Titel sind keine Lyrics hinterlegt." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "There are no lyrics for this track."
-          }
-        }
-      }
-    },
-    "Lyrics hier eingeben oder einfügen …" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Type or paste lyrics here…"
-          }
-        }
-      }
-    },
-    "Lyrics entfernen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Remove lyrics"
-          }
-        }
-      }
-    },
-    "Auf Lyrics aus der Datei zurücksetzen" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Reset to the lyrics in the file"
-          }
-        }
-      }
-    },
-    "%@ · %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ · %2$@"
+            "value" : "Reset"
           }
         }
       }

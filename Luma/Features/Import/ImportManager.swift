@@ -194,7 +194,7 @@ final class ImportManager {
 
         await withTaskGroup(of: ParseOutcome.self) { group in
             func submitNext() {
-                guard !cancelRequested, nextIndex < fileURLs.count else { return }
+                guard nextIndex < fileURLs.count else { return }
                 let url = fileURLs[nextIndex]
                 nextIndex += 1
                 group.addTask {
@@ -235,7 +235,8 @@ final class ImportManager {
                     break
                 }
                 progress = totalCount > 0 ? min(1, Double(completed) / Double(totalCount)) : 0
-                submitNext()
+                // After a cancel nothing new is started; what is already in flight still lands.
+                if !cancelRequested { submitNext() }
             }
         }
     }
