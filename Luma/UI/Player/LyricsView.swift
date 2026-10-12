@@ -18,15 +18,18 @@ struct LyricsView: View {
         // text is white whatever the app's appearance.
         .background { ArtworkBackground(data: track?.resolvedArtworkData(), palette: nil) }
         #if os(iOS) || os(visionOS)
-        // The lyrics cover the player, so its controls come along in small: pause, skip and
-        // see where the song is without leaving the lyrics. (On the Mac the lyrics are a popover
-        // right above the now-playing bar, which already has all of that.)
+        // The lyrics cover the player, so the mini-player comes along — the very same bar as on
+        // every other screen (cover, title, previous / play-pause / next, progress line), with the
+        // same glass, corners and margins. Tapping its cover or title closes the lyrics, back to
+        // the player. (On the Mac the lyrics are a popover right above the now-playing bar.)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if track != nil {
-                LyricsControls()
+                MiniPlayer(onTap: { dismiss() })
+                    .glassEffect(.regular, in: .rect(cornerRadius: 18))
+                    .environment(\.colorScheme, .dark)   // sits on the (always dark) cover backdrop
                     .padding(.horizontal, 12)
                     .padding(.top, 6)
-                    .padding(.bottom, 10)
+                    .padding(.bottom, 4)
             }
         }
         #endif
@@ -107,110 +110,6 @@ struct LyricsView: View {
             .padding(.horizontal, 32)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-    }
-}
-
-// MARK: - Controls
-
-/// Compact transport for the lyrics view: elapsed time · previous / play-pause / next · time left,
-/// over a hairline of progress — the mini-player's controls without its cover and title, which
-/// the header above already shows. Built to the SAME measures as `MiniPlayer` (48 pt buttons +
-/// 9 pt padding = 66 pt high, 18 pt corners, same icon sizes and progress line), so the two bars
-/// read as one control.
-private struct LyricsControls: View {
-    @Environment(AppContainer.self) private var app
-
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            HStack(spacing: 0) {
-                LyricsTimeLabel(showsRemaining: false)
-                    .frame(width: 56, alignment: .leading)
-                Spacer(minLength: 0)
-                HStack(spacing: 10) {
-                    button("backward.fill", size: 18, label: "Vorheriger Titel") {
-                        Task { await app.queue.playPrevious() }
-                    }
-                    button(app.player.showsPlaying ? "pause.fill" : "play.fill", size: 26, weight: .medium,
-                           label: app.player.showsPlaying ? "Pause" : "Wiedergabe") {
-                        app.player.userTogglePlayPause()
-                    }
-                    button("forward.fill", size: 18, label: "Nächster Titel") {
-                        Task { await app.queue.advance() }
-                    }
-                    .disabled(!app.queue.hasNext)
-                    .opacity(app.queue.hasNext ? 1 : 0.35)
-                }
-                Spacer(minLength: 0)
-                LyricsTimeLabel(showsRemaining: true)
-                    .frame(width: 56, alignment: .trailing)
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 9)
-
-            LyricsProgressBar()
-                .padding(.horizontal, 16)
-                .padding(.bottom, 5)
-        }
-        .frame(maxWidth: .infinity)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
-        .environment(\.colorScheme, .dark)   // sits on the (always dark) cover backdrop
-    }
-
-    private func button(_ icon: String, size: CGFloat, weight: Font.Weight = .regular,
-                        label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon)
-                .font(.system(size: size, weight: weight))
-                .foregroundStyle(.white)
-                .contentTransition(.identity)   // no slow symbol morph on play↔pause
-                .frame(width: 48, height: 48)
-                .contentShape(Rectangle())
-                .animation(nil, value: icon)
-        }
-        .buttonStyle(PressableButtonStyle())
-        .accessibilityLabel(label)
-    }
-}
-
-/// Isolated, like the progress line below, so the several-times-a-second position updates
-/// re-render only these few characters — not the buttons next to them.
-private struct LyricsTimeLabel: View {
-    @Environment(AppContainer.self) private var app
-    let showsRemaining: Bool
-
-    var body: some View {
-        let time = app.player.currentTime
-        let shown = showsRemaining ? max(0, app.player.duration - time) : time
-        Text(verbatim: (showsRemaining ? "-" : "") + Self.format(shown))
-            .font(.system(size: 12, weight: .medium))
-            .monospacedDigit()
-            .foregroundStyle(.white.opacity(0.55))
-    }
-
-    private static func format(_ t: TimeInterval) -> String {
-        guard t.isFinite, t >= 0 else { return "0:00" }
-        return String(format: "%d:%02d", Int(t) / 60, Int(t) % 60)
-    }
-}
-
-private struct LyricsProgressBar: View {
-    @Environment(AppContainer.self) private var app
-
-    private var progress: Double {
-        let duration = app.player.duration
-        guard duration > 0 else { return 0 }
-        return min(1, max(0, app.player.currentTime / duration))
-    }
-
-    var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.22))
-                Capsule().fill(.white.opacity(0.9))
-                    .frame(width: max(0, geo.size.width * progress))
-            }
-        }
-        .frame(height: 2.5)
     }
 }
 
