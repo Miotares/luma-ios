@@ -97,7 +97,6 @@ struct PlaylistsView: View {
     @State private var importMessage = ""
     /// Non-nil while the cover editor is presented for a specific playlist (from the gallery
     /// context menu).
-    @State private var coverEditorPlaylist: Playlist?
 
     private static let anyGenreDescriptor: FetchDescriptor<Track> = {
         var d = FetchDescriptor<Track>(predicate: #Predicate { $0.genre != nil && $0.genre != "" })
@@ -137,13 +136,6 @@ struct PlaylistsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(importMessage)
-        }
-        .sheet(item: $coverEditorPlaylist) { playlist in
-            PlaylistCoverEditor(
-                playlist: playlist,
-                tracks: playlist.safeSortedTracks(using: validEntryTrackMap(playlistTracks))
-            )
-            .environment(app)
         }
     }
 
@@ -286,22 +278,10 @@ struct PlaylistsView: View {
                             ForEach(playlists) { playlist in
                                 NavigationLink(value: playlist) {
                                     PlaylistCard(playlist: playlist, tracks: playlist.safeSortedTracks(using: map))
+                                        .contentShape(Rectangle())
+                                        .playlistContextMenu(playlist)
                                 }
                                 .buttonStyle(.plain)
-                                .contextMenu {
-                                    Button {
-                                        coverEditorPlaylist = playlist
-                                    } label: {
-                                        Label("Cover ändern", systemImage: "photo")
-                                    }
-                                    Button(role: .destructive) {
-                                        try? app.library.deletePlaylist(playlist)
-                                    } label: {
-                                        Label("Playlist löschen", systemImage: "trash")
-                                            .foregroundStyle(.red)
-                                    }
-                                    .tint(.red)
-                                }
                             }
                         }
                         .padding(.horizontal, 16)

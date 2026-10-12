@@ -219,7 +219,10 @@ struct SearchView: View {
 
                 if !filteredArtists.isEmpty {
                     resultSectionHeader("Künstler")
-                    ForEach(filteredArtists) { artist in
+                    // `modelContext != nil`: the results are a snapshot, and an item deleted through
+                    // its long-press menu must not be drawn again before the snapshot refreshes —
+                    // reading a deleted model's attributes crashes.
+                    ForEach(filteredArtists.filter { $0.modelContext != nil }) { artist in
                         NavigationLink(value: artist) {
                             HStack(spacing: 12) {
                                 ArtworkView(data: artist.sortedAlbums.first?.coverData, cacheKey: artist.sortedAlbums.first?.artworkCacheKey, cornerRadius: 22, size: 44)
@@ -231,6 +234,8 @@ struct SearchView: View {
                             }
                             .padding(.horizontal, 20)
                             .frame(minHeight: 58)
+                            .contentShape(Rectangle())
+                            .artistContextMenu(artist)
                         }
                         .buttonStyle(LumaRowStyle())
                         LumaSeparator(leadingPad: 76)
@@ -239,7 +244,7 @@ struct SearchView: View {
 
                 if !filteredPlaylists.isEmpty {
                     resultSectionHeader("Playlists")
-                    ForEach(filteredPlaylists) { playlist in
+                    ForEach(filteredPlaylists.filter { $0.modelContext != nil }) { playlist in
                         NavigationLink(value: playlist) {
                             HStack(spacing: 12) {
                                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -257,6 +262,8 @@ struct SearchView: View {
                             }
                             .padding(.horizontal, 20)
                             .frame(minHeight: 62)
+                            .contentShape(Rectangle())
+                            .playlistContextMenu(playlist)
                         }
                         .buttonStyle(LumaRowStyle())
                         LumaSeparator(leadingPad: 80)
@@ -265,7 +272,7 @@ struct SearchView: View {
 
                 if !filteredAlbums.isEmpty {
                     resultSectionHeader("Alben")
-                    ForEach(filteredAlbums) { album in
+                    ForEach(filteredAlbums.filter { $0.modelContext != nil }) { album in
                         NavigationLink(value: album) {
                             HStack(spacing: 12) {
                                 ArtworkView(data: album.coverData, cacheKey: album.artworkCacheKey, cornerRadius: 8, size: 48)
@@ -280,6 +287,8 @@ struct SearchView: View {
                             }
                             .padding(.horizontal, 20)
                             .frame(minHeight: 62)
+                            .contentShape(Rectangle())
+                            .albumContextMenu(album)
                         }
                         .buttonStyle(LumaRowStyle())
                         LumaSeparator(leadingPad: 80)

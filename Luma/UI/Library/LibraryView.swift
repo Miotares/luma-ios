@@ -380,6 +380,7 @@ struct LibraryAlbumsContent: View {
                                     .frame(width: 116, alignment: .leading)
                             }
                             .contentShape(Rectangle())
+                            .playlistContextMenu(playlist)
                         }
                         .buttonStyle(.plain)
                     }
@@ -405,9 +406,9 @@ struct LibraryAlbumsContent: View {
                         NavigationLink(value: album) {
                             LibraryAlbumCard(album: album, cardWidth: 116)
                                 .contentShape(Rectangle())
+                                .albumContextMenu(album)
                         }
                         .buttonStyle(.plain)
-                        .albumContextMenu(album)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -466,9 +467,10 @@ struct LibraryAlbumsContent: View {
             ForEach(sortedAlbums) { album in
                 NavigationLink(value: album) {
                     LibraryAlbumCard(album: album, cardWidth: nil)
+                        .contentShape(Rectangle())
+                        .albumContextMenu(album)
                 }
                 .buttonStyle(.plain)
-                .albumContextMenu(album)
             }
         }
         .padding(.horizontal, 16)
@@ -479,9 +481,10 @@ struct LibraryAlbumsContent: View {
             ForEach(sortedAlbums) { album in
                 NavigationLink(value: album) {
                     AlbumListRow(album: album)
+                        .contentShape(Rectangle())
+                        .albumContextMenu(album)
                 }
                 .buttonStyle(LumaRowStyle())
-                .albumContextMenu(album)
                 LumaSeparator(leadingPad: 88)
             }
         }
@@ -516,6 +519,8 @@ struct LibraryArtistsContent: View {
                 ForEach(sortedArtists) { artist in
                     NavigationLink(value: artist) {
                         ArtistListRow(artist: artist)
+                            .contentShape(Rectangle())
+                            .artistContextMenu(artist)
                     }
                     .buttonStyle(LumaRowStyle())
                     LumaSeparator(leadingPad: 82)

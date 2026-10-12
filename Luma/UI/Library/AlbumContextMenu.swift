@@ -1,12 +1,11 @@
 import SwiftUI
 import SwiftData
 
-// A macOS right-click menu for an album card — mirrors the options menu behind the three-dots
-// button in AlbumDetailView (play next / append / add to playlist / edit info / delete), so the
-// Albums page offers the same actions without opening the album first. iOS/visionOS get a no-op
-// so call sites can apply `.albumContextMenu(album)` unconditionally.
+// Long-press (iOS) / right-click (macOS) menu for an album card or row — mirrors the options menu
+// behind the three-dots button in AlbumDetailView (play next / append / add to playlist / edit
+// info / delete), so an album offers the same actions wherever it appears, without opening it
+// first. ("Auswählen" stays in the album page: it is a mode of that page.)
 
-#if os(macOS)
 private struct AlbumContextMenuModifier: ViewModifier {
     let album: Album
     @Environment(AppContainer.self) private var app
@@ -29,7 +28,10 @@ private struct AlbumContextMenuModifier: ViewModifier {
                     try? app.library.removeAlbum(album)
                 }
             } message: {
-                Text("\"\(album.title)\" und alle \(album.tracks.count) Titel werden entfernt.")
+                // The album may already be gone when the alert's content is re-evaluated mid-dismiss.
+                if album.modelContext != nil {
+                    Text("\"\(album.title)\" und alle \(album.tracks.count) Titel werden entfernt.")
+                }
             }
     }
 
@@ -76,17 +78,12 @@ private struct AlbumContextMenuModifier: ViewModifier {
         }
     }
 }
-#endif
 
 extension View {
-    /// macOS: attaches the album options menu as a right-click context menu (with its own
-    /// edit-info sheet + delete confirmation). No-op on other platforms.
-    @ViewBuilder
+    /// Attaches the album options as a long-press / right-click menu (with its own edit-info
+    /// sheet + delete confirmation). Goes on the NavigationLink's LABEL, not on the link — see the
+    /// note in PlaylistContextMenu.swift.
     func albumContextMenu(_ album: Album) -> some View {
-        #if os(macOS)
         modifier(AlbumContextMenuModifier(album: album))
-        #else
-        self
-        #endif
     }
 }

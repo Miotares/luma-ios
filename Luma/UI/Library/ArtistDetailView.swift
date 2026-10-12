@@ -51,9 +51,10 @@ struct ArtistDetailView: View {
                         ForEach(artist.sortedAlbums) { album in
                             NavigationLink(destination: AlbumDetailView(album: album)) {
                                 LibraryAlbumCard(album: album, cardWidth: nil, subtitle: albumSubtitle(album))
+                                    .contentShape(Rectangle())
+                                    .albumContextMenu(album)
                             }
                             .buttonStyle(.plain)
-                            .albumContextMenu(album)
                         }
                     }
                     .padding(.horizontal, 16)
