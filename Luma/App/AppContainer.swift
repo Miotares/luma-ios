@@ -69,6 +69,8 @@ final class AppContainer {
         lib.seedPlaylistOrderIfNeeded()
         // Backfill denormalized playlist-entry metadata (one-time) so backups/placeholders work.
         lib.backfillEntryMetadataIfNeeded()
+        // Drop lyrics typed into the (removed) lyrics editor of the test builds (one-time).
+        lib.clearTypedLyricsIfNeeded()
         // Recover real titles for songs that were imported under their container UUID (one-time,
         // re-reads the affected files in the background).
         Task { await lib.repairPlaceholderTitlesIfNeeded() }

@@ -108,6 +108,28 @@ final class LibraryRepository {
         UserDefaults.standard.set(true, forKey: Self.didSeedPlaylistOrderKey)
     }
 
+    private static let didClearTypedLyricsKey = "didClearTypedLyrics_v1"
+
+    /// One-time: removes the lyrics that were typed into the lyrics editor of the test builds.
+    /// That editor is gone — lyrics come from the audio file (or the `.lrc` beside it) only — and
+    /// typed text would otherwise stay on its track for good, with no way left to edit or remove
+    /// it. Typed text and a `.lrc` picked up at import share `customLyrics` and can't be told
+    /// apart, so this clears the field once, on the first launch of the build without the editor;
+    /// whatever an import stores there afterwards is kept. A no-op for a library that never saw
+    /// the editor (every App Store version).
+    func clearTypedLyricsIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: Self.didClearTypedLyricsKey) else { return }
+        // Fetch or save failure → return WITHOUT marking done, so it retries on the next launch.
+        guard let tracks = try? context.fetch(
+            FetchDescriptor<Track>(predicate: #Predicate { $0.customLyrics != nil })
+        ) else { return }
+        if !tracks.isEmpty {
+            for track in tracks { track.customLyrics = nil }
+            guard (try? context.save()) != nil else { return }
+        }
+        UserDefaults.standard.set(true, forKey: Self.didClearTypedLyricsKey)
+    }
+
     private static let didRepairUUIDTitlesKey = "didRepairUUIDTitles_v1"
 
     /// One-time repair for libraries imported before the title fallback was fixed: a file whose

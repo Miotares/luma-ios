@@ -39,7 +39,8 @@ final class Track {
     /// (raw text, LRC timestamps kept). nil for most tracks — lyrics embedded in the file's tags
     /// are read on demand instead (LyricsReader), so they don't bloat the track rows. Takes
     /// precedence over the embedded lyrics. (The name dates from a lyrics editor that existed in a
-    /// test build; it stays because renaming an attribute is a schema change.)
+    /// test build — its texts are removed by `LibraryRepository.clearTypedLyricsIfNeeded` — and
+    /// stays because renaming an attribute is a schema change.)
     var customLyrics: String?
     /// The track's OWN cover — picked in the editor, or embedded in a file that has no album tag
     /// (those all share the catch-all "Unknown Album", so its cover can't speak for them). Most
