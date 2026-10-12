@@ -90,8 +90,11 @@ final class EQManager {
     private var isFlat: Bool { gains.allSatisfy { abs($0) < 0.1 } }
 
     private func apply() {
-        guard let eq = graph?.eq else { return }
-        eq.bypass = !(isEnabled && !isFlat)   // bypass when off or flat → bit-perfect
+        guard let graph else { return }
+        let eq = graph.eq
+        // Bypass when off or flat → bit-perfect. The graph owns the bypass flag because loudness
+        // normalization keeps the same unit active for its make-up gain.
+        graph.setEQShapingActive(isEnabled && !isFlat)
         for (i, band) in eq.bands.enumerated() where i < gains.count {
             band.gain = isEnabled ? gains[i] : 0
         }

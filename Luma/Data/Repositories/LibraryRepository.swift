@@ -640,6 +640,10 @@ final class LibraryRepository {
                 if let dl = dup.lastPlayedDate, dl > (keeper.lastPlayedDate ?? .distantPast) {
                     keeper.lastPlayedDate = dl
                 }
+                if keeper.loudnessLUFS == nil {
+                    keeper.loudnessLUFS = dup.loudnessLUFS
+                    keeper.loudnessPeakDB = dup.loudnessPeakDB
+                }
                 // Move playlist memberships to the keeper BEFORE deleting — otherwise the track's
                 // cascade-delete rule would drop it out of every playlist it was in.
                 for entry in Array(dup.playlistEntries) { entry.track = keeper }

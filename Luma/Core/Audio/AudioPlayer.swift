@@ -47,7 +47,7 @@ final class AudioPlayer {
         return 1.0
     }() {
         didSet {
-            if !isCrossfading { activeNode.volume = volume }
+            if !isCrossfading { activeNode.volume = volume * currentGain }
             UserDefaults.standard.set(Double(volume), forKey: AudioPlayer.volumeDefaultsKey)
         }
     }
@@ -167,6 +167,21 @@ final class AudioPlayer {
         max(0, UserDefaults.standard.double(forKey: Self.crossfadeDefaultsKey))
     }
 
+    // Loudness normalization: every track is played at the same perceived level. `LoudnessService`
+    // supplies the per-track gain; nil (not wired) means unity, i.e. playback as before.
+    weak var loudness: LoudnessService?
+    /// Normalization gain (linear, 0…1) the ACTIVE node carries for the current track, on top of
+    /// the user `volume`. Any boost comes from the graph's constant make-up gain, so this only
+    /// ever attenuates. Every place that sets a node's volume multiplies it in.
+    private var currentGain: Float = 1
+    /// Glides the active node from one normalization gain to another (a late measurement, a
+    /// gapless album transition) — off the main run loop for the same reason as the crossfade ramp.
+    private var gainRampSource: DispatchSourceTimer?
+    private var gainRampGeneration = 0
+    /// Bumped by every start request, so one that was suspended for a loudness estimate can tell
+    /// it has been superseded.
+    private var playRequestGeneration = 0
+
     private let session = AudioSessionManager.shared
     private let nowPlaying = NowPlayingManager.shared
 
@@ -178,6 +193,7 @@ final class AudioPlayer {
     deinit {
         displayTimer?.invalidate()
         fadeTimerSource?.cancel()
+        gainRampSource?.cancel()
         sleepTimer?.invalidate()
         accessedURL?.stopAccessingSecurityScopedResource()
         if let occlusionObserver { NotificationCenter.default.removeObserver(occlusionObserver) }
@@ -217,6 +233,17 @@ final class AudioPlayer {
             return
         }
         skipFailures = 0
+        // A track played before its loudness is measured gets a quick estimate from its first
+        // seconds, so even that first play starts near the right level. Returns at once when the
+        // value is already known or normalization is off. When it does have to measure, this is a
+        // real suspension — so if another start request arrived meanwhile, that newer one wins.
+        playRequestGeneration += 1
+        let request = playRequestGeneration
+        await loudness?.quickEstimate(for: track, url: url)
+        guard request == playRequestGeneration else {
+            if scoped { url.stopAccessingSecurityScopedResource() }
+            return
+        }
         if autostart {
             do { try session.activate() }
             catch {
@@ -237,11 +264,14 @@ final class AudioPlayer {
 
         let node = activeNode
         engineGraph.connect(player: node, format: decoded.processingFormat)
-        node.volume = volume
+        cancelGainRamp()
+        currentGain = normalizationGain(for: track)
+        node.volume = volume * currentGain
 
         currentTrack = track
         currentDecoded = decoded
         onTrackChanged?(track)
+        prioritizeLoudness(startingWith: track)
         trackDuration = trackLength(decoded, fallback: track.duration)
         duration = trackDuration
         let clamped = max(0, offset)
@@ -351,7 +381,7 @@ final class AudioPlayer {
             clearPreload()
             clock.invalidate()
             engineGraph.connect(player: node, format: decoded.processingFormat)
-            node.volume = volume
+            node.volume = volume * currentGain
             schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
             if engineGraph.startAndPlay(node, format: decoded.processingFormat) {
                 anchorPlayhead(at: resumeAt)
@@ -389,7 +419,7 @@ final class AudioPlayer {
             // drops scheduled buffers, so schedule AFTER it; playSafely then only reports success if
             // the engine is actually running (no silent "success" on a dead graph).
             let ready = engineGraph.rebuildConnections(player: node, format: decoded.processingFormat)
-            node.volume = volume
+            node.volume = volume * currentGain
             schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
             guard ready, engineGraph.playSafely(node, format: decoded.processingFormat) else {
                 // Couldn't rebuild/start or play didn't render — the route is still settling after a
@@ -543,6 +573,7 @@ final class AudioPlayer {
         onStatsShouldPersist?()   // persist coalesced play/listen stats on stop
         cancelSleepTimer()
         cancelCrossfade()
+        cancelGainRamp()
         stopDisplayTimer()
         scheduleGeneration += 1
         resetNodes()
@@ -722,6 +753,12 @@ final class AudioPlayer {
             currentTrack = next.track
             currentDecoded = next.decoded
             clearPreload()
+            // The node is already rendering `next` back-to-back, so its normalization gain is
+            // applied here. Consecutive tracks of one album glide over instead of stepping, so a
+            // continuous (live / mixed) album has no audible level jump at the seam.
+            setCurrentGain(normalizationGain(for: next.track),
+                           rampOver: Self.continuesAlbum(finished, next.track) ? 0.8 : 0.05)
+            prioritizeLoudness(startingWith: next.track)
             onTrackChanged?(next.track)
             trackDuration = trackLength(next.decoded, fallback: next.track.duration)
             duration = trackDuration
@@ -842,6 +879,9 @@ final class AudioPlayer {
             return
         }
         flushListen()
+        cancelGainRamp()
+        let incomingGain = normalizationGain(for: track)
+        let outgoingGain = currentGain
         let outgoing = activeNode
         useNodeB.toggle()                 // active node is now the incoming one
         let incoming = activeNode
@@ -861,6 +901,7 @@ final class AudioPlayer {
             useNodeB.toggle()              // revert: activeNode goes back to the outgoing node
             crossfadeOutgoing = nil
             isCrossfading = false
+            activeNode.volume = volume * currentGain
             return
         }
 
@@ -868,6 +909,7 @@ final class AudioPlayer {
         if !playRecorded, let outgoing = currentTrack { playRecorded = true; onTrackPlayed?(outgoing) }
         currentTrack = track
         currentDecoded = decoded
+        currentGain = incomingGain
         onTrackChanged?(track)
         trackDuration = trackLength(decoded, fallback: track.duration)
         duration = trackDuration
@@ -878,6 +920,7 @@ final class AudioPlayer {
         playRecorded = false
         anchorPlayhead(at: 0)
         queue?.advanceIndexForCrossfade()
+        prioritizeLoudness(startingWith: track)
         nowPlayingUpdate()
 
         // Ramp the two nodes' gains off the main run loop (see `fadeTimerSource`). The handler runs
@@ -886,7 +929,10 @@ final class AudioPlayer {
         // parameter), drive `p` from a monotonic deadline, and hop to the main actor a single time to
         // run `finishCrossfade()`. 100 Hz here is cheap (two float writes/tick) and keeps every step
         // inaudibly small even on a 1 s crossfade.
-        let target = volume
+        // Each node fades to/from ITS OWN track's normalized level, so two differently-loud tracks
+        // cross at matched loudness.
+        let outgoingTarget = volume * outgoingGain
+        let incomingTarget = volume * incomingGain
         let startTime = DispatchTime.now()
         let totalNanos = Double(max(0.001, xfade)) * 1_000_000_000
         nonisolated(unsafe) let rampOutgoing = outgoing
@@ -897,8 +943,8 @@ final class AudioPlayer {
         source.setEventHandler { [weak self] in
             let elapsed = Double(DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds)
             let p = min(1, elapsed / totalNanos)
-            rampOutgoing.volume = Float(1 - p) * target
-            rampIncoming.volume = Float(p) * target
+            rampOutgoing.volume = Float(1 - p) * outgoingTarget
+            rampIncoming.volume = Float(p) * incomingTarget
             if p >= 1 {
                 source.cancel()
                 // Stop the outgoing node HERE (off-main; AVAudioPlayerNode.stop() is thread-safe) so
@@ -917,7 +963,7 @@ final class AudioPlayer {
         fadeTimerSource?.cancel(); fadeTimerSource = nil
         crossfadeOutgoing?.stop()
         crossfadeOutgoing = nil
-        activeNode.volume = volume
+        activeNode.volume = volume * currentGain
         isCrossfading = false
     }
 
@@ -926,8 +972,89 @@ final class AudioPlayer {
         guard isCrossfading else { return }
         fadeTimerSource?.cancel(); fadeTimerSource = nil
         crossfadeOutgoing?.stop(); crossfadeOutgoing = nil
-        activeNode.volume = volume
+        activeNode.volume = volume * currentGain
         isCrossfading = false
+    }
+
+    // MARK: - Loudness normalization
+
+    private func normalizationGain(for track: Track) -> Float {
+        loudness?.nodeGain(for: track) ?? 1
+    }
+
+    /// Has the current track and the few after it measured first, so each has its real value
+    /// well before it starts.
+    private func prioritizeLoudness(startingWith track: Track) {
+        guard let loudness else { return }
+        loudness.prioritize([track] + (queue?.upNext.prefix(3) ?? []))
+    }
+
+    /// The full loudness measurement of a track arrived. If it is the one playing (it started on
+    /// an estimate), glide to the measured level instead of jumping.
+    func loudnessDidUpdate(for id: UUID) {
+        guard id == currentTrackID, state != .stopped,
+              let gain = loudness?.nodeGain(forTrackID: id) else { return }
+        setCurrentGain(gain, rampOver: 1.5)
+    }
+
+    /// Normalization was wired up or switched in Settings: apply (or drop) it right away.
+    func normalizationSettingChanged() {
+        engineGraph.setMakeupGain(loudness?.makeupGainDB ?? 0)
+        cancelGainRamp()
+        currentGain = currentTrack.map(normalizationGain(for:)) ?? 1
+        if !isCrossfading { activeNode.volume = volume * currentGain }
+        if let track = currentTrack { prioritizeLoudness(startingWith: track) }
+    }
+
+    /// Changes the current track's normalization gain, ramping the active node there over
+    /// `seconds` while playing. Mid-crossfade only the value is stored — `finishCrossfade` applies it.
+    private func setCurrentGain(_ gain: Float, rampOver seconds: TimeInterval) {
+        let from = currentGain
+        currentGain = gain
+        cancelGainRamp()
+        guard !isCrossfading else { return }
+        guard state == .playing, seconds > 0, abs(from - gain) > 0.005 else {
+            activeNode.volume = volume * gain
+            return
+        }
+        gainRampGeneration += 1
+        let generation = gainRampGeneration
+        let userVolume = volume
+        let startTime = DispatchTime.now()
+        let totalNanos = seconds * 1_000_000_000
+        nonisolated(unsafe) let node = activeNode
+        let source = DispatchSource.makeTimerSource(queue: fadeQueue)
+        source.schedule(deadline: .now(), repeating: .milliseconds(10), leeway: .milliseconds(2))
+        source.setEventHandler { [weak self] in
+            let elapsed = Double(DispatchTime.now().uptimeNanoseconds - startTime.uptimeNanoseconds)
+            let p = Float(min(1, elapsed / totalNanos))
+            node.volume = userVolume * (from + (gain - from) * p)
+            if p >= 1 {
+                source.cancel()
+                Task { @MainActor in self?.finishGainRamp(generation) }
+            }
+        }
+        gainRampSource = source
+        source.resume()
+    }
+
+    private func finishGainRamp(_ generation: Int) {
+        guard generation == gainRampGeneration else { return }   // superseded meanwhile
+        gainRampSource = nil
+        // Re-apply on the main actor so a volume change made during the ramp wins.
+        if !isCrossfading { activeNode.volume = volume * currentGain }
+    }
+
+    private func cancelGainRamp() {
+        gainRampGeneration += 1
+        gainRampSource?.cancel()
+        gainRampSource = nil
+    }
+
+    /// `next` directly follows `previous` on the same album (same disc, next track number).
+    private static func continuesAlbum(_ previous: Track, _ next: Track) -> Bool {
+        guard let a = previous.album, let b = next.album, a.id == b.id else { return false }
+        return previous.discNumber == next.discNumber && next.trackNumber == previous.trackNumber + 1
     }
 
     // MARK: - Unplayable handling
@@ -1000,7 +1127,7 @@ final class AudioPlayer {
             // the real recovery for a car-BT / headset route change that arrives while playing — a
             // plain reconnect-while-running leaves the AUs uninitialized (render err -10867).
             let ready = engineGraph.rebuildConnections(player: node, format: decoded.processingFormat)
-            node.volume = volume
+            node.volume = volume * currentGain
             schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
             guard ready, engineGraph.playSafely(node, format: decoded.processingFormat) else {
                 // Route still settling — stay paused at the live position and retry once shortly.
@@ -1016,7 +1143,7 @@ final class AudioPlayer {
             // Paused across the route change: just reconnect + reschedule so the next resume() (which
             // does its own full rebuild) is ready. No play() here.
             engineGraph.connect(player: node, format: decoded.processingFormat)
-            node.volume = volume
+            node.volume = volume * currentGain
             schedule(decoded, track: track, on: node, from: resumeAt, generation: scheduleGeneration)
         }
     }
@@ -1131,7 +1258,8 @@ final class AudioPlayer {
         if remaining <= 0 {
             fireSleep()
         } else if remaining <= sleepFadeDuration, !isCrossfading {
-            activeNode.volume = volume * Float(remaining / sleepFadeDuration)
+            cancelGainRamp()
+            activeNode.volume = volume * currentGain * Float(remaining / sleepFadeDuration)
         }
     }
 
@@ -1142,7 +1270,7 @@ final class AudioPlayer {
     }
 
     private func restoreSleepVolume() {
-        if !isCrossfading { activeNode.volume = volume }
+        if !isCrossfading { activeNode.volume = volume * currentGain }
     }
 
     // MARK: - System Notifications

@@ -13,6 +13,7 @@ final class AppContainer {
     let queue: PlaybackQueue
     let importManager: ImportManager
     let library: LibraryRepository
+    let loudness: LoudnessService
     let libraryFolders: LibraryFolders
     let folderScanner: FolderLibraryScanner
     let review = ReviewPromptManager()
@@ -46,6 +47,13 @@ final class AppContainer {
         self.importManager = ImportManager(modelContext: modelContext)
         let lib = LibraryRepository(context: modelContext)
         self.library = lib
+        // Loudness normalization: the service measures tracks in the background and hands the
+        // player each track's gain; a measurement arriving for the playing track glides in.
+        let loud = LoudnessService(context: modelContext)
+        self.loudness = loud
+        p.loudness = loud
+        p.normalizationSettingChanged()
+        loud.onResult = { [weak p] id in p?.loudnessDidUpdate(for: id) }
         let folders = LibraryFolders()
         self.libraryFolders = folders
         self.folderScanner = FolderLibraryScanner(modelContainer: modelContext.container, folders: folders)
@@ -66,7 +74,10 @@ final class AppContainer {
         Task.detached { LegacyArtworkCleanup.purgeIfNeeded() }
 
         // After a music import, re-link any playlist placeholders to the new tracks.
-        importManager.onImportFinished = { [weak self] in self?.library.relinkPlaylistPlaceholders() }
+        importManager.onImportFinished = { [weak self] in
+            self?.library.relinkPlaylistPlaceholders()
+            self?.loudness.enqueueMissing()   // measure the new tracks' loudness in the background
+        }
 
         // When a track is deleted: if it was playing, tear down playback so the mini-player
         // closes; otherwise just drop it from the queue. Keeps a deleted (dangling) Track
@@ -106,6 +117,12 @@ final class AppContainer {
 
         AppContainer.shared = self
         restoreLastSession()
+        // Measure whatever has no loudness yet (the whole library on the first launch after the
+        // update) — once launch has settled, at low priority.
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            loud.enqueueMissing()
+        }
 
         #if DEBUG
         // Dev/Simulator seeding: launch with LUMA_DEBUG_IMPORT=/host/folder to import that folder's
@@ -118,7 +135,10 @@ final class AppContainer {
 
     /// Triggers a watched-folder rescan (macOS reference library). Never invoked on iOS.
     func rescan() {
-        Task { await folderScanner.scan() }
+        Task {
+            await folderScanner.scan()
+            loudness.enqueueMissing()
+        }
     }
 
     // MARK: - Playback State Persistence

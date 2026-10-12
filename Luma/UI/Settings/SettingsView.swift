@@ -24,6 +24,7 @@ struct SettingsView: View {
     #endif
     @AppStorage(MediaStorage.backupDefaultsKey) private var backupEnabled = false
     @AppStorage(AudioPlayer.crossfadeDefaultsKey) private var crossfade: Double = 0
+    @AppStorage(LoudnessService.enabledKey) private var normalizeVolume = true
     @AppStorage(MainTabView.startupTabKey) private var startupTab = LumaTab.library.rawValue
     #if os(macOS)
     @AppStorage(LumaAppearance.storageKey) private var macAppearance = LumaAppearance.system.rawValue
@@ -58,6 +59,7 @@ struct SettingsView: View {
                     #endif
                     sectionLabel("Wiedergabe")
                     crossfadeBlock
+                    normalizeBlock
                     equalizerBlock
                     sectionLabel("Mediathek")
                     statsBlock
@@ -283,6 +285,29 @@ struct SettingsView: View {
         .padding(.vertical, 14)
         .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal, 16)
+    }
+
+    private var normalizeBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $normalizeVolume) {
+                Text("Lautstärke angleichen").foregroundStyle(.lumaInk())
+            }
+            .tint(Color.lumaToggle)
+            Text("Spielt alle Titel gleich laut ab – egal, wie laut die jeweilige Datei ist.")
+                .font(.caption)
+                .foregroundStyle(.lumaInk(0.4))
+                .fixedSize(horizontal: false, vertical: true)
+            if normalizeVolume { LoudnessProgressLine() }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+        .background(Color.lumaSurface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .onChange(of: normalizeVolume) { _, _ in
+            app.loudness.settingChanged()
+            app.player.normalizationSettingChanged()
+        }
     }
 
     private var homeBlock: some View {
@@ -640,3 +665,18 @@ extension SettingsView {
     }
 }
 #endif
+
+/// "Still analyzing" line under the normalization switch. Its own view so the per-track countdown
+/// re-renders only this line, not the whole settings screen.
+private struct LoudnessProgressLine: View {
+    @Environment(AppContainer.self) private var app
+
+    var body: some View {
+        if app.loudness.remaining > 0 {
+            Text("Mediathek wird analysiert – noch \(app.loudness.remaining) Titel")
+                .font(.caption)
+                .foregroundStyle(.lumaInk(0.4))
+                .monospacedDigit()
+        }
+    }
+}

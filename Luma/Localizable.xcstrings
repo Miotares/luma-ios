@@ -2671,6 +2671,36 @@
           }
         }
       }
+    },
+    "Lautstärke angleichen" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Normalize volume"
+          }
+        }
+      }
+    },
+    "Spielt alle Titel gleich laut ab – egal, wie laut die jeweilige Datei ist." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plays every track at the same loudness, no matter how loud the file itself is."
+          }
+        }
+      }
+    },
+    "Mediathek wird analysiert – noch %lld Titel" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Analyzing library – %lld tracks to go"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

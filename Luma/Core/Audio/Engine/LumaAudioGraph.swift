@@ -204,6 +204,34 @@ final class LumaAudioGraph {
         node.volume = max(0, min(1, volume))
     }
 
+    // MARK: - Output gain / EQ bypass
+
+    /// Constant make-up gain (dB) for loudness normalization, applied through the EQ unit's global
+    /// gain. A player node can only attenuate (volume 0…1), so boosting a quiet track works by
+    /// raising the whole output by this fixed amount and having each node subtract what its track
+    /// doesn't need. Using the EQ unit that is already in the chain means NO topology change — the
+    /// route-change / rebuild paths stay exactly as they are.
+    private(set) var makeupGainDB: Float = 0
+    private var eqShapingActive = false
+
+    func setMakeupGain(_ dB: Float) {
+        makeupGainDB = dB
+        eq.globalGain = dB
+        updateEQBypass()
+    }
+
+    /// Whether the user's equalizer is actually shaping the sound (on and not flat).
+    func setEQShapingActive(_ active: Bool) {
+        eqShapingActive = active
+        updateEQBypass()
+    }
+
+    /// The unit is bypassed (bit-perfect passthrough) only when NEITHER the equalizer nor the
+    /// make-up gain needs it.
+    private func updateEQBypass() {
+        eq.bypass = !(eqShapingActive || makeupGainDB != 0)
+    }
+
     // MARK: - EQ bands
 
     private func configureEQBands() {

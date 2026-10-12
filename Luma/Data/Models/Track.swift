@@ -30,6 +30,11 @@ final class Track {
     /// re-read metadata only when the file's modification date or size changes.
     var fileModifiedDate: Date?
     var fileSize: Int64?
+    /// Integrated loudness (LUFS) and sample peak (dBFS), measured once in the background by
+    /// `LoudnessService` and used to play every track equally loud. nil = not measured yet.
+    /// Optional so the SwiftData migration stays lightweight.
+    var loudnessLUFS: Double?
+    var loudnessPeakDB: Double?
 
     @Relationship(deleteRule: .nullify, inverse: \Album.tracks)
     var album: Album?
